@@ -12,6 +12,7 @@ Requires:
 from __future__ import annotations
 
 import argparse
+import shutil
 import socket
 import time
 from pathlib import Path
@@ -33,6 +34,17 @@ def _wait_for_port(host: str, port: int, timeout: float = 60.0) -> None:
         except OSError:
             time.sleep(0.5)
     raise TimeoutError(f"Mod TCP port {port} not available after {timeout:.0f}s")
+
+
+def _install_mod(mod_zip: str, server_data_dir: str) -> None:
+    src = Path(mod_zip)
+    if not src.exists():
+        raise FileNotFoundError(f"Mod zip not found: {src}")
+    dest_dir = Path(server_data_dir) / "config" / "mods"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "mimi-gateway.zip"
+    shutil.copy2(src, dest)
+    print(f"Mod installed: {dest}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,6 +80,12 @@ def parse_args() -> argparse.Namespace:
         dest="server_data_dir",
         help="Directory for Mindustry server data (saves, config)",
     )
+    p.add_argument(
+        "--mod-zip",
+        default="mimi-gateway-v1.0.4.zip",
+        dest="mod_zip",
+        help="Path to the Mimi Gateway mod zip to install",
+    )
     return p.parse_args()
 
 
@@ -81,6 +99,7 @@ def main() -> None:
 
     server: Optional["MindustryServer"] = None
     if not args.no_server:
+        _install_mod(args.mod_zip, args.server_data_dir)
         from rl.server.manager import MindustryServer
         server = MindustryServer(jar_path=args.server_jar, data_dir=args.server_data_dir)
         print(f"Starting Mindustry server ({args.server_jar})...")
