@@ -303,7 +303,7 @@ function validateCommand(commandStr) {
     }
     
     let cmd = parts[0].toUpperCase();
-    let validCommands = ["BUILD", "UNIT_MOVE", "MSG", "ATTACK", "STOP", "FACTORY", "REPAIR", "DELETE", "UPGRADE"];
+    let validCommands = ["BUILD", "UNIT_MOVE", "MSG", "ATTACK", "STOP", "FACTORY", "REPAIR", "DELETE", "UPGRADE", "RESET"];
     
     if (validCommands.indexOf(cmd) === -1) {
         return { valid: false, error: "Comando desconhecido: " + cmd };
@@ -353,6 +353,9 @@ function processCommand(commandStr) {
                 break;
             case "UPGRADE":
                 handleUpgradeCommand(parts);
+                break;
+            case "RESET":
+                handleResetCommand(parts);
                 break;
         }
     } catch (e) {
@@ -672,6 +675,53 @@ function handleUpgradeCommand(parts) {
         Log.err("[Mimi Gateway] Erro ao fazer upgrade: " + e);
         if (config.debug) Log.err(e.stack);
     }
+}
+
+function handleResetCommand(parts) {
+    let mapName = parts[1] ? parts[1].trim() : null;
+
+    Log.info("[Mimi Gateway] RESET solicitado" + (mapName ? ": " + mapName : " (mapa padrão)"));
+
+    // Must execute map load on the game thread
+    Core.app.post(() => {
+        try {
+            let map = null;
+
+            if (mapName != null) {
+                // Try exact name match first, then file name match
+                map = Maps.all().find(m =>
+                    m.name() === mapName ||
+                    (m.file != null && m.file.nameWithoutExtension() === mapName)
+                );
+            }
+
+            if (map == null) {
+                map = Maps.all().first();
+                if (map != null) {
+                    Log.info("[Mimi Gateway] Mapa '" + mapName + "' não encontrado, usando: " + map.name());
+                }
+            }
+
+            if (map == null) {
+                Log.err("[Mimi Gateway] RESET: nenhum mapa disponível");
+                return;
+            }
+
+            let rules = map.applyRules(Gamemode.survival);
+            Vars.logic.reset();
+            Vars.world.loadMap(map, rules);
+            Vars.state.set(State.playing);
+            Vars.logic.play();
+
+            // Reset tick counter so state is sent promptly after load
+            tickCounter = config.updateInterval;
+
+            Log.info("[Mimi Gateway] RESET completo: " + map.name());
+        } catch (e) {
+            Log.err("[Mimi Gateway] Erro no RESET: " + e);
+            if (config.debug) Log.err(e.stack);
+        }
+    });
 }
 
 // ============================================================================
