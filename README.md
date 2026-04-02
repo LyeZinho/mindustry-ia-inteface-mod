@@ -2,6 +2,8 @@
 
 A Mindustry mod that exposes the game's internal API via a TCP socket server, enabling RL agents and AI systems to perceive game state and execute actions in real-time.
 
+**[📖 Guia em Português: GUIA_INSTALACAO_PT.md](./GUIA_INSTALACAO_PT.md)**
+
 ## Installation
 
 1. Copy the `mimi-gateway` folder to your Mindustry mods directory:
@@ -12,6 +14,8 @@ A Mindustry mod that exposes the game's internal API via a TCP socket server, en
 2. Launch Mindustry and verify the mod loads (check `F1` console for "[Mimi Gateway] Servidor iniciado na porta 9000")
 
 3. Connect your Python/AI client to `localhost:9000`
+
+For detailed step-by-step instructions, see **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** (English) or **[GUIA_INSTALACAO_PT.md](./GUIA_INSTALACAO_PT.md)** (Português).
 
 ## Architecture
 
