@@ -174,11 +174,6 @@ function captureGameState() {
             coreTileY = state.core.y;
         }
         
-        if (Vars.player != null) {
-            state.player.x = Math.floor(Vars.player.x / 8);
-            state.player.y = Math.floor(Vars.player.y / 8);
-        }
-        
         state.player.alive = false;
         state.player.hp = 0.0;
         if (playerUnitId >= 0) {
@@ -189,7 +184,7 @@ function captureGameState() {
                     if (u != null && u.id === playerUnitId) {
                         state.player.x = Math.floor(u.x / 8);
                         state.player.y = Math.floor(u.y / 8);
-                        state.player.hp = Math.floor((u.health / u.maxHealth) * 100) / 100;
+                        state.player.hp = u.maxHealth > 0 ? Math.floor((u.health / u.maxHealth) * 100) / 100 : 0.0;
                         state.player.alive = true;
                         found = true;
                     }
@@ -324,7 +319,7 @@ function validateCommand(commandStr) {
     }
     
     let cmd = parts[0].toUpperCase();
-    let validCommands = ["BUILD", "UNIT_MOVE", "MSG", "ATTACK", "STOP", "FACTORY", "REPAIR", "DELETE", "UPGRADE", "RESET", "PLAYER_MOVE", "PLAYER_BUILD"];
+    let validCommands = ["BUILD", "UNIT_MOVE", "MSG", "ATTACK", "STOP", "FACTORY", "REPAIR", "DELETE", "UPGRADE", "RESET", "PLAYER_MOVE", "PLAYER_BUILD", "REPAIR_SLOT"];
     
     if (validCommands.indexOf(cmd) === -1) {
         return { valid: false, error: "Comando desconhecido: " + cmd };
@@ -383,6 +378,9 @@ function processCommand(commandStr) {
                 break;
             case "PLAYER_BUILD":
                 handlePlayerBuildCommand(parts);
+                break;
+            case "REPAIR_SLOT":
+                handleRepairSlotCommand(parts);
                 break;
         }
     } catch (e) {
@@ -475,6 +473,37 @@ function handlePlayerBuildCommand(parts) {
         Log.info("[Mimi Gateway] PLAYER_BUILD: " + blockName + " em (" + targetTileX + "," + targetTileY + ")");
     } catch (e) {
         Log.err("[Mimi Gateway] Erro ao construir: " + e);
+    }
+}
+
+function handleRepairSlotCommand(parts) {
+    if (parts.length < 2) {
+        Log.info("[Mimi Gateway] REPAIR_SLOT: parâmetros insuficientes");
+        return;
+    }
+    let slot = parseInt(parts[1]);
+    if (slot < 0 || slot > 8) {
+        Log.info("[Mimi Gateway] REPAIR_SLOT: slot inválido " + slot);
+        return;
+    }
+    let unit = findPlayerUnit();
+    if (unit == null) {
+        Log.info("[Mimi Gateway] REPAIR_SLOT: player unit não encontrada");
+        return;
+    }
+    let unitTileX = Math.floor(unit.x / 8);
+    let unitTileY = Math.floor(unit.y / 8);
+    let targetTileX = unitTileX + SLOT_DX[slot];
+    let targetTileY = unitTileY + SLOT_DY[slot];
+    let tile = Vars.world.tile(targetTileX, targetTileY);
+    if (tile == null || tile.build == null) {
+        Log.info("[Mimi Gateway] REPAIR_SLOT: bloco não encontrado em slot " + slot);
+        return;
+    }
+    let build = tile.build;
+    if (build.health < build.maxHealth) {
+        build.heal(build.maxHealth * 0.5);
+        Log.info("[Mimi Gateway] REPAIR_SLOT: reparado em (" + targetTileX + "," + targetTileY + ")");
     }
 }
 
