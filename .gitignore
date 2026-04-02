@@ -1,0 +1,12 @@
+# Python virtual environment
+rl/venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# RL training artifacts
+rl/models/*.zip
+rl/logs/*
+!rl/logs/.gitkeep
