@@ -324,7 +324,7 @@ function validateCommand(commandStr) {
     }
     
     let cmd = parts[0].toUpperCase();
-    let validCommands = ["BUILD", "UNIT_MOVE", "MSG", "ATTACK", "STOP", "FACTORY", "REPAIR", "DELETE", "UPGRADE", "RESET"];
+    let validCommands = ["BUILD", "UNIT_MOVE", "MSG", "ATTACK", "STOP", "FACTORY", "REPAIR", "DELETE", "UPGRADE", "RESET", "PLAYER_MOVE", "PLAYER_BUILD"];
     
     if (validCommands.indexOf(cmd) === -1) {
         return { valid: false, error: "Comando desconhecido: " + cmd };
@@ -378,6 +378,12 @@ function processCommand(commandStr) {
             case "RESET":
                 handleResetCommand(parts);
                 break;
+            case "PLAYER_MOVE":
+                handlePlayerMoveCommand(parts);
+                break;
+            case "PLAYER_BUILD":
+                handlePlayerBuildCommand(parts);
+                break;
         }
     } catch (e) {
         Log.err("[Mimi Gateway] Erro ao processar comando: " + e);
@@ -390,6 +396,86 @@ function gridToTile(gridX, gridY) {
         coreTileX + (gridX - config.gridRadius),
         coreTileY + (gridY - config.gridRadius)
     );
+}
+
+const MOVE_STEP = 3;
+const DIR_DX = [0, 1, 1, 1, 0, -1, -1, -1];
+const DIR_DY = [1, 1, 0, -1, -1, -1, 0, 1];
+
+const SLOT_DX = [-1, 0, 1, -1, 0, 1, -1, 0, 1];
+const SLOT_DY = [1, 1, 1, 0, 0, 0, -1, -1, -1];
+
+function findPlayerUnit() {
+    if (playerUnitId < 0) return null;
+    let result = null;
+    let data = Team.sharded.data();
+    if (data != null && data.units != null) {
+        data.units.forEach(u => {
+            if (u != null && u.id === playerUnitId) {
+                result = u;
+            }
+        });
+    }
+    return result;
+}
+
+function handlePlayerMoveCommand(parts) {
+    if (parts.length < 2) {
+        Log.info("[Mimi Gateway] PLAYER_MOVE: parâmetros insuficientes");
+        return;
+    }
+    let dir = parseInt(parts[1]);
+    if (dir < 0 || dir > 7) {
+        Log.info("[Mimi Gateway] PLAYER_MOVE: direção inválida " + dir);
+        return;
+    }
+    let unit = findPlayerUnit();
+    if (unit == null) {
+        Log.info("[Mimi Gateway] PLAYER_MOVE: player unit não encontrada (id=" + playerUnitId + ")");
+        return;
+    }
+    let newX = unit.x + DIR_DX[dir] * MOVE_STEP * 8;
+    let newY = unit.y + DIR_DY[dir] * MOVE_STEP * 8;
+    unit.set(newX, newY);
+    Log.info("[Mimi Gateway] PLAYER_MOVE dir=" + dir + " -> (" + Math.floor(newX/8) + "," + Math.floor(newY/8) + ")");
+}
+
+function handlePlayerBuildCommand(parts) {
+    if (parts.length < 3) {
+        Log.info("[Mimi Gateway] PLAYER_BUILD: parâmetros insuficientes");
+        return;
+    }
+    let blockName = parts[1];
+    let slot = parseInt(parts[2]);
+    if (slot < 0 || slot > 8) {
+        Log.info("[Mimi Gateway] PLAYER_BUILD: slot inválido " + slot);
+        return;
+    }
+    let unit = findPlayerUnit();
+    if (unit == null) {
+        Log.info("[Mimi Gateway] PLAYER_BUILD: player unit não encontrada");
+        return;
+    }
+    let unitTileX = Math.floor(unit.x / 8);
+    let unitTileY = Math.floor(unit.y / 8);
+    let targetTileX = unitTileX + SLOT_DX[slot];
+    let targetTileY = unitTileY + SLOT_DY[slot];
+    let blockType = Vars.content.blocks().find(b => b.name === blockName);
+    if (blockType == null) {
+        Log.info("[Mimi Gateway] PLAYER_BUILD: bloco não encontrado: " + blockName);
+        return;
+    }
+    let tile = Vars.world.tile(targetTileX, targetTileY);
+    if (tile == null) {
+        Log.info("[Mimi Gateway] PLAYER_BUILD: tile inválido (" + targetTileX + "," + targetTileY + ")");
+        return;
+    }
+    try {
+        tile.setNet(blockType, Team.sharded, 0);
+        Log.info("[Mimi Gateway] PLAYER_BUILD: " + blockName + " em (" + targetTileX + "," + targetTileY + ")");
+    } catch (e) {
+        Log.err("[Mimi Gateway] Erro ao construir: " + e);
+    }
 }
 
 function handleBuildCommand(parts) {
