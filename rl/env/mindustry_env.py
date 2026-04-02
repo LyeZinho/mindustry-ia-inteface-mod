@@ -50,6 +50,8 @@ class MindustryEnv(gym.Env):
 
         self._client.message("RESET")
         state = self._client.receive_state()
+        if state is None:
+            raise RuntimeError("Failed to receive initial state from Mindustry server")
         self._prev_state = state
         self._step_count = 0
 
@@ -59,6 +61,9 @@ class MindustryEnv(gym.Env):
     def step(
         self, action: Dict[str, Any]
     ) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
+        if self._client is None:
+            raise RuntimeError("Must call reset() before step()")
+        
         action_type = int(action["action_type"])
         x = int(action["x"][0])
         y = int(action["y"][0])
@@ -66,6 +71,8 @@ class MindustryEnv(gym.Env):
         self._execute_action(action_type, x, y)
 
         state = self._client.receive_state()
+        if state is None:
+            raise RuntimeError("Lost connection to Mindustry server during step")
         self._step_count += 1
 
         obs = parse_observation(state)
@@ -104,11 +111,16 @@ class MindustryEnv(gym.Env):
                 self._client.attack(unit_id, x, y)
         elif action_type == 7:
             self._client.spawn_unit(x, y, unit_type="poly")
+        else:
+            raise ValueError(f"Invalid action_type: {action_type}. Must be 0-7")
 
     def _get_first_friendly_id(self) -> Optional[int]:
         if self._prev_state is None:
             return None
         units = self._prev_state.get("friendlyUnits", [])
         if units:
-            return int(units[0].get("id", 0))
+            unit_id = units[0].get("id")
+            if unit_id is None:
+                return None
+            return int(unit_id)
         return None
