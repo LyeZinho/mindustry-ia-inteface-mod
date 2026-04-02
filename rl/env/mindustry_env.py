@@ -16,6 +16,16 @@ from rl.env.spaces import make_obs_space, make_action_space, parse_observation, 
 from rl.rewards.multi_objective import compute_reward
 
 
+DEFAULT_TRAINING_MAPS = [
+    "Ancient Caldera",
+    "Windswept Islands",
+    "Tarpit Depths",
+    "Craters",
+    "Fungal Pass",
+    "Nuclear Complex",
+]
+
+
 class MindustryEnv(gym.Env):
     metadata = {"render_modes": []}
 
@@ -25,6 +35,7 @@ class MindustryEnv(gym.Env):
         port: int = 9000,
         max_steps: int = 5000,
         client: Optional[MimiClient] = None,
+        maps: Optional[list[str]] = None,
     ) -> None:
         super().__init__()
         self.observation_space = make_obs_space()
@@ -34,6 +45,8 @@ class MindustryEnv(gym.Env):
         self._host = host
         self._port = port
         self._client: Optional[MimiClient] = client
+        self._maps: list[str] = maps if maps is not None else DEFAULT_TRAINING_MAPS
+        self._map_index: int = 0
 
         self._prev_state: Optional[Dict[str, Any]] = None
         self._step_count: int = 0
@@ -48,7 +61,11 @@ class MindustryEnv(gym.Env):
         if self._client is None:
             self._client = MimiClient(self._host, self._port)
 
-        self._client.message("RESET")
+        map_name = self._maps[self._map_index % len(self._maps)]
+        self._map_index += 1
+
+        self._client.send_command(f"RESET;{map_name}")
+
         state = self._client.receive_state()
         if state is None:
             raise RuntimeError("Failed to receive initial state from Mindustry server")

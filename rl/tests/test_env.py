@@ -96,3 +96,37 @@ def test_episode_truncates_on_max_steps():
     assert not truncated
     _, _, terminated, truncated, _ = env.step(action)
     assert truncated is True
+
+
+DEFAULT_MAPS = ["Ancient Caldera", "Windswept Islands"]
+
+
+def test_reset_sends_reset_command_with_map():
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client, maps=DEFAULT_MAPS)
+    env.reset()
+    client.send_command.assert_called_with("RESET;Ancient Caldera")
+
+
+def test_reset_cycles_maps_on_successive_resets():
+    client = MagicMock()
+    client.receive_state.return_value = MOCK_STATE
+    env = MindustryEnv(client=client, maps=DEFAULT_MAPS)
+
+    env.reset()
+    client.send_command.assert_called_with("RESET;Ancient Caldera")
+
+    env.reset()
+    client.send_command.assert_called_with("RESET;Windswept Islands")
+
+    env.reset()
+    client.send_command.assert_called_with("RESET;Ancient Caldera")
+
+
+def test_reset_uses_default_maps_when_none_provided():
+    client = make_mock_client(states=[MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    client.send_command.assert_called_once()
+    call_arg = client.send_command.call_args[0][0]
+    assert call_arg.startswith("RESET;")
