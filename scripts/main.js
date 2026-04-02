@@ -25,34 +25,67 @@ let tickCounter = 0;
 // ============================================================================
 // PHASE 2: Socket Server Implementation
 // ============================================================================
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 5;
+const reconnectDelay = 5000;
+
 function startSocketServer() {
     Threads.daemon(() => {
-        try {
-            serverSocket = new java.net.ServerSocket(config.port);
-            Log.info("[Mimi Gateway] Servidor iniciado na porta " + config.port);
-            
-            // Wait for client connection
-            clientSocket = serverSocket.accept();
-            clientSocket.setSoTimeout(0); // No timeout
-            
-            // Setup streams
-            let outputStream = clientSocket.getOutputStream();
-            outputWriter = new java.io.PrintWriter(outputStream, true);
-            
-            let inputStream = clientSocket.getInputStream();
-            inputReader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream));
-            
-            isConnected = true;
-            Log.info("[Mimi Gateway] Mimi v2 conectado!");
-            
-            // Communication loop
-            communicationLoop();
-            
-        } catch (e) {
-            Log.err("[Mimi Gateway] Erro no servidor: " + e);
-            if (config.debug) Log.err(e.stack);
-        } finally {
-            cleanup();
+        reconnectAttempts = 0;
+        
+        while (reconnectAttempts < maxReconnectAttempts) {
+            try {
+                if (serverSocket != null && !serverSocket.isClosed()) {
+                    serverSocket.close();
+                }
+                
+                serverSocket = new java.net.ServerSocket(config.port);
+                Log.info("[Mimi Gateway] Servidor iniciado na porta " + config.port);
+                reconnectAttempts = 0;
+                
+                while (true) {
+                    clientSocket = null;
+                    isConnected = false;
+                    
+                    try {
+                        Log.info("[Mimi Gateway] Aguardando conexão...");
+                        clientSocket = serverSocket.accept();
+                        clientSocket.setSoTimeout(0);
+                        
+                        let outputStream = clientSocket.getOutputStream();
+                        outputWriter = new java.io.PrintWriter(outputStream, true);
+                        
+                        let inputStream = clientSocket.getInputStream();
+                        inputReader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream));
+                        
+                        isConnected = true;
+                        reconnectAttempts = 0;
+                        Log.info("[Mimi Gateway] Mimi v2 conectado!");
+                        
+                        communicationLoop();
+                        
+                    } catch (e) {
+                        isConnected = false;
+                        if (config.debug) Log.info("[Mimi Gateway] Erro na comunicação: " + e);
+                        try { java.lang.Thread.sleep(2000); } catch(sleep) {}
+                    } finally {
+                        try { if (inputReader != null) inputReader.close(); } catch(e) {}
+                        try { if (outputWriter != null) outputWriter.close(); } catch(e) {}
+                        try { if (clientSocket != null && !clientSocket.isClosed()) clientSocket.close(); } catch(e) {}
+                    }
+                }
+                
+            } catch (e) {
+                reconnectAttempts++;
+                Log.err("[Mimi Gateway] Erro no servidor (tentativa " + reconnectAttempts + "/" + maxReconnectAttempts + "): " + e);
+                
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    try { java.lang.Thread.sleep(reconnectDelay); } catch(sleep) {}
+                } else {
+                    Log.err("[Mimi Gateway] Máximo de tentativas de reconexão atingido");
+                    break;
+                }
+            }
         }
     });
 }
@@ -253,12 +286,43 @@ function sendGameState() {
 // ============================================================================
 // PHASE 4: Command Parser and Execution
 // ============================================================================
+function validateCommand(commandStr) {
+    if (commandStr == null || commandStr.length === 0) {
+        return { valid: false, error: "Comando vazio" };
+    }
+    
+    if (commandStr.length > 1000) {
+        return { valid: false, error: "Comando muito longo (máx 1000 caracteres)" };
+    }
+    
+    let parts = commandStr.split(";");
+    if (parts.length === 0) {
+        return { valid: false, error: "Formato de comando inválido" };
+    }
+    
+    let cmd = parts[0].toUpperCase();
+    let validCommands = ["BUILD", "UNIT_MOVE", "MSG", "ATTACK", "STOP", "FACTORY", "REPAIR", "DELETE", "UPGRADE"];
+    
+    if (validCommands.indexOf(cmd) === -1) {
+        return { valid: false, error: "Comando desconhecido: " + cmd };
+    }
+    
+    return { valid: true, command: cmd, parts: parts };
+}
+
 function processCommand(commandStr) {
+    let validation = validateCommand(commandStr);
+    
+    if (!validation.valid) {
+        if (config.debug) Log.info("[Mimi Gateway] Comando inválido: " + validation.error);
+        return;
+    }
+    
     if (config.debug) Log.info("[Mimi Gateway] Comando recebido: " + commandStr);
     
     try {
-        let parts = commandStr.split(";");
-        let commandType = parts[0].toUpperCase();
+        let commandType = validation.command;
+        let parts = validation.parts;
         
         switch (commandType) {
             case "BUILD":
@@ -288,8 +352,6 @@ function processCommand(commandStr) {
             case "UPGRADE":
                 handleUpgradeCommand(parts);
                 break;
-            default:
-                Log.info("[Mimi Gateway] Comando desconhecido: " + commandType);
         }
     } catch (e) {
         Log.err("[Mimi Gateway] Erro ao processar comando: " + e);
@@ -346,23 +408,37 @@ function handleUnitMoveCommand(parts) {
     let targetX = parseFloat(parts[2]);
     let targetY = parseFloat(parts[3]);
     
-    // Find the unit
+    // Find the unit - iterate through all nearby units to locate
     let unit = null;
-    Units.nearby(Vars.player.team(), (u) => {
-        if (u.id === unitId) {
-            unit = u;
+    let found = false;
+    
+    try {
+        // Search through all allied units
+        let allUnits = Vars.state.teams.active.map(t => t.units).flat();
+        for (let i = 0; i < allUnits.size; i++) {
+            let u = allUnits.get(i);
+            if (u != null && u.id === unitId) {
+                unit = u;
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found || unit == null) {
+            Log.info("[Mimi Gateway] Unidade não encontrada: " + unitId);
             return;
         }
-    });
-    
-    if (unit == null) {
-        Log.info("[Mimi Gateway] Unidade não encontrada: " + unitId);
-        return;
+        
+        // Move the unit to the target position (world coordinates)
+        let worldX = targetX * 8;
+        let worldY = targetY * 8;
+        
+        unit.moveTo(worldX, worldY);
+        Log.info("[Mimi Gateway] Mover unidade " + unitId + " para " + targetX + "," + targetY);
+    } catch (e) {
+        Log.err("[Mimi Gateway] Erro ao mover unidade " + unitId + ": " + e);
+        if (config.debug) Log.err(e.stack);
     }
-    
-    // Move the unit
-    unit.moveTarget(targetX, targetY);
-    Log.info("[Mimi Gateway] Mover unidade " + unitId + " para " + targetX + "," + targetY);
 }
 
 function handleMessageCommand(parts) {
@@ -376,44 +452,83 @@ function handleMessageCommand(parts) {
 
 function handleAttackCommand(parts) {
     // ATTACK;unit_id;target_x;target_y
-    if (parts.length < 4) return;
+    if (parts.length < 4) {
+        Log.info("[Mimi Gateway] ATTACK: parâmetros insuficientes");
+        return;
+    }
     
     let unitId = parseInt(parts[1]);
     let targetX = parseFloat(parts[2]);
     let targetY = parseFloat(parts[3]);
     
-    // Find and command unit to attack
-    let unit = null;
-    Units.nearby(Vars.player.team(), (u) => {
-        if (u.id === unitId) {
-            unit = u;
+    try {
+        let unit = null;
+        let allUnits = Vars.state.teams.active.map(t => t.units).flat();
+        for (let i = 0; i < allUnits.size; i++) {
+            let u = allUnits.get(i);
+            if (u != null && u.id === unitId) {
+                unit = u;
+                break;
+            }
+        }
+        
+        if (unit == null) {
+            Log.info("[Mimi Gateway] ATTACK: unidade não encontrada: " + unitId);
             return;
         }
-    });
-    
-    if (unit != null) {
-        let tile = Vars.world.tile(targetX, targetY);
-        if (tile != null && tile.build != null) {
-            unit.target(tile.build);
-            Log.info("[Mimi Gateway] Ataque ordenado: unidade " + unitId);
+        
+        let targetTile = Vars.world.tile(targetX, targetY);
+        if (targetTile != null && targetTile.build != null) {
+            unit.target(targetTile.build);
+            Log.info("[Mimi Gateway] Ataque ordenado: unidade " + unitId + " -> bloco em " + targetX + "," + targetY);
+        } else {
+            Log.info("[Mimi Gateway] ATTACK: alvo inválido em " + targetX + "," + targetY);
         }
+    } catch (e) {
+        Log.err("[Mimi Gateway] Erro ao atacar: " + e);
+        if (config.debug) Log.err(e.stack);
     }
 }
 
 function handleStopCommand(parts) {
-    if (parts.length < 2) {
-        Units.nearby(Vars.player.team(), (u) => {
-            u.clearCommand();
-        });
-        Log.info("[Mimi Gateway] Todas as unidades paradas");
-    } else {
-        let unitId = parseInt(parts[1]);
-        Units.nearby(Vars.player.team(), (u) => {
-            if (u.id === unitId) {
-                u.clearCommand();
+    try {
+        if (parts.length < 2 || parts[1] === "" || parts[1] == null) {
+            let allTeams = Vars.state.teams.active;
+            allTeams.forEach(team => {
+                if (team != null && team.units != null) {
+                    team.units.forEach(u => {
+                        if (u != null) {
+                            u.clearCommand();
+                        }
+                    });
+                }
+            });
+            Log.info("[Mimi Gateway] Todas as unidades paradas");
+        } else {
+            let unitId = parseInt(parts[1]);
+            let found = false;
+            
+            let allTeams = Vars.state.teams.active;
+            allTeams.forEach(team => {
+                if (team != null && team.units != null) {
+                    team.units.forEach(u => {
+                        if (u != null && u.id === unitId) {
+                            u.clearCommand();
+                            found = true;
+                        }
+                    });
+                }
+            });
+            
+            if (found) {
+                Log.info("[Mimi Gateway] Unidade " + unitId + " parada");
+            } else {
+                Log.info("[Mimi Gateway] Unidade não encontrada: " + unitId);
             }
-        });
-        Log.info("[Mimi Gateway] Unidade " + unitId + " parada");
+        }
+    } catch (e) {
+        Log.err("[Mimi Gateway] Erro ao parar unidades: " + e);
+        if (config.debug) Log.err(e.stack);
     }
 }
 
@@ -427,30 +542,36 @@ function handleFactoryCommand(parts) {
     let factoryY = parseInt(parts[2]);
     let unitType = parts[3] ? parts[3] : "poly";
     
-    let tile = Vars.world.tile(factoryX, factoryY);
-    if (tile == null || tile.build == null) {
-        Log.info("[Mimi Gateway] FACTORY: tile inválido");
-        return;
-    }
-    
-    let factory = tile.build;
-    if (factory == null || factory.block == null || !factory.block.hasPower) {
-        Log.info("[Mimi Gateway] FACTORY: não é uma fábrica");
-        return;
-    }
-    
-    let unitTypeObj = Vars.content.units().find(u => u.name === unitType);
-    if (unitTypeObj == null) {
-        Log.info("[Mimi Gateway] FACTORY: tipo de unidade não encontrado: " + unitType);
-        return;
-    }
-    
     try {
-        factory.team = Vars.player.team();
-        Call.unitSpawn(factory.team, factory.block, factoryX * 8, factoryY * 8, unitTypeObj);
+        let factoryTile = Vars.world.tile(factoryX, factoryY);
+        if (factoryTile == null || factoryTile.build == null) {
+            Log.info("[Mimi Gateway] FACTORY: tile inválido");
+            return;
+        }
+        
+        let factory = factoryTile.build;
+        let factoryBlock = factory.block;
+        
+        if (factoryBlock == null || !factoryBlock.name.includes("factory") && !factoryBlock.name.includes("reconstructor")) {
+            Log.info("[Mimi Gateway] FACTORY: não é uma fábrica: " + (factoryBlock != null ? factoryBlock.name : "null"));
+            return;
+        }
+        
+        let unitTypeObj = Vars.content.units().find(u => u.name === unitType);
+        if (unitTypeObj == null) {
+            Log.info("[Mimi Gateway] FACTORY: tipo de unidade não encontrado: " + unitType);
+            return;
+        }
+        
+        let team = factory.team != null ? factory.team : Vars.player != null ? Vars.player.team() : Team.sharded;
+        
+        Call.effect("spawn", factory.x, factory.y);
+        Call.createUnit(team, unitTypeObj, factory.x, factory.y);
+        
         Log.info("[Mimi Gateway] FÁBRICA: " + unitType + " em " + factoryX + "," + factoryY);
     } catch (e) {
         Log.err("[Mimi Gateway] Erro ao produzir unidade: " + e);
+        if (config.debug) Log.err(e.stack);
     }
 }
 
@@ -512,29 +633,41 @@ function handleUpgradeCommand(parts) {
     
     let targetX = parseInt(parts[1]);
     let targetY = parseInt(parts[2]);
-    let tile = Vars.world.tile(targetX, targetY);
     
-    if (tile == null || tile.build == null) {
-        Log.info("[Mimi Gateway] UPGRADE: bloco não encontrado");
-        return;
-    }
-    
-    let build = tile.build;
-    if (build.block.upgrades != null && build.block.upgrades.length > 0) {
-        let upgradePath = build.block.upgrades[0];
-        if (upgradePath != null && upgradePath.length >= 2) {
-            let nextBlock = upgradePath[1];
-            if (nextBlock != null) {
-                try {
-                    Call.configure(tile, nextBlock.name);
-                    Log.info("[Mimi Gateway] UPGRADE: " + targetX + "," + targetY + " -> " + nextBlock.name);
-                } catch (e) {
-                    Log.err("[Mimi Gateway] Erro ao fazer upgrade: " + e);
-                }
-            }
+    try {
+        let tile = Vars.world.tile(targetX, targetY);
+        if (tile == null || tile.build == null) {
+            Log.info("[Mimi Gateway] UPGRADE: bloco não encontrado");
+            return;
         }
-    } else {
-        Log.info("[Mimi Gateway] UPGRADE: bloco não tem upgrades");
+        
+        let build = tile.build;
+        let block = build.block;
+        
+        if (block == null || block.upgrades == null || block.upgrades.length === 0) {
+            Log.info("[Mimi Gateway] UPGRADE: bloco não tem upgrades");
+            return;
+        }
+        
+        let upgradePath = block.upgrades;
+        if (upgradePath == null || upgradePath.length < 2) {
+            Log.info("[Mimi Gateway] UPGRADE: caminho de upgrade inválido");
+            return;
+        }
+        
+        let nextBlock = upgradePath[1];
+        if (nextBlock == null) {
+            Log.info("[Mimi Gateway] UPGRADE: próximo bloco não encontrado");
+            return;
+        }
+        
+        Call.deconstructFinish(build.team, build);
+        Call.constructBlock(build.team, tile, nextBlock, build.rotation);
+        
+        Log.info("[Mimi Gateway] UPGRADE: " + targetX + "," + targetY + " -> " + nextBlock.name);
+    } catch (e) {
+        Log.err("[Mimi Gateway] Erro ao fazer upgrade: " + e);
+        if (config.debug) Log.err(e.stack);
     }
 }
 
