@@ -28,6 +28,7 @@ def test_reward_core_hp_loss():
     curr = make_state(core={"hp": 0.8})
     r = compute_reward(prev, curr, done=False)
     assert r < 0
+    assert r == pytest.approx(-0.101, abs=1e-5)
 
 
 def test_reward_core_hp_gain():
@@ -45,6 +46,7 @@ def test_reward_wave_survived():
     curr = make_state(wave=2)
     r = compute_reward(prev, curr, done=False)
     assert r > 0
+    assert r == pytest.approx(0.199, abs=1e-5)
 
 
 def test_reward_resource_accumulation():
@@ -53,6 +55,7 @@ def test_reward_resource_accumulation():
     curr = make_state(resources={"copper": 500, "lead": 0, "graphite": 0, "titanium": 0, "thorium": 0})
     r = compute_reward(prev, curr, done=False)
     assert r > 0
+    assert r == pytest.approx(0.149, abs=1e-5)
 
 
 def test_reward_terminal_penalty():
@@ -62,6 +65,15 @@ def test_reward_terminal_penalty():
     r = compute_reward(prev, curr, done=True)
     # -1.0 terminal + core_hp_delta penalty
     assert r <= -1.0
+    assert r == pytest.approx(-1.051, abs=1e-5)
+
+
+def test_reward_done_without_core_destroyed():
+    """done=True with core alive (truncation) does not apply -1.0 terminal penalty."""
+    prev = make_state(core={"hp": 1.0})
+    curr = make_state(core={"hp": 1.0})
+    r = compute_reward(prev, curr, done=True)
+    assert r == pytest.approx(-0.001, abs=1e-4)
 
 
 def test_reward_friendly_units_ratio():

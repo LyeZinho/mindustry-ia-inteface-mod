@@ -41,7 +41,7 @@ def compute_reward(
     reward = (
         0.50 * core_hp_delta
         + 0.20 * wave_survived_bonus
-        + 0.15 * (resources_delta / 500.0)
+        + 0.15 * (resources_delta / 500.0)  # 500 ≈ core storage capacity; normalises to ~[-1, 1]
         + 0.15 * friendly_ratio
         - 0.001
     )

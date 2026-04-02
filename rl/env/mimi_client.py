@@ -9,8 +9,11 @@ The constructor accepts an optional pre-built socket for unit testing.
 from __future__ import annotations
 
 import json
+import logging
 import socket
 from typing import Any, Dict, Optional
+
+_log = logging.getLogger(__name__)
 
 
 class MimiClient:
@@ -35,7 +38,8 @@ class MimiClient:
             return None
         try:
             return json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            _log.warning("Malformed JSON from server (%.200r): %s", line, exc)
             return None
 
     def send_command(self, cmd: str) -> None:

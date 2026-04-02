@@ -12,7 +12,7 @@ import numpy as np
 import gymnasium as gym
 
 from rl.env.mimi_client import MimiClient
-from rl.env.spaces import make_obs_space, make_action_space, parse_observation
+from rl.env.spaces import make_obs_space, make_action_space, parse_observation, BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER
 from rl.rewards.multi_objective import compute_reward
 
 
@@ -94,11 +94,11 @@ class MindustryEnv(gym.Env):
         if action_type == 0:
             self._client.message("WAIT")
         elif action_type == 1:
-            self._client.build("duo", x, y, rotation=0)
+            self._client.build(BLOCK_TURRET, x, y, rotation=0)
         elif action_type == 2:
-            self._client.build("wall", x, y, rotation=0)
+            self._client.build(BLOCK_WALL, x, y, rotation=0)
         elif action_type == 3:
-            self._client.build("solar-panel", x, y, rotation=0)
+            self._client.build(BLOCK_POWER, x, y, rotation=0)
         elif action_type == 4:
             self._client.repair(x, y)
         elif action_type == 5:

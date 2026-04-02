@@ -79,3 +79,30 @@ def test_receive_state_returns_none_on_empty():
     client._sock = MagicMock()
     client._file = mock_file
     assert client.receive_state() is None
+
+
+def test_integration_socketpair_receive():
+    """Integration: MimiClient reads JSON correctly through a real OS socket pair."""
+    server, client_raw = socket.socketpair()
+    payload = {"wave": 5, "core": {"hp": 0.75}}
+    server.sendall((json.dumps(payload) + "\n").encode("utf-8"))
+    server.close()  # EOF so readline() returns
+
+    client = MimiClient(_sock=client_raw)
+    state = client.receive_state()
+    assert state is not None
+    assert state["wave"] == 5
+    assert state["core"]["hp"] == pytest.approx(0.75)
+    client.close()
+
+
+def test_integration_socketpair_malformed_json():
+    """Integration: receive_state() returns None on malformed JSON through real socket."""
+    server, client_raw = socket.socketpair()
+    server.sendall(b"not valid json\n")
+    server.close()
+
+    client = MimiClient(_sock=client_raw)
+    state = client.receive_state()
+    assert state is None
+    client.close()

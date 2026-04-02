@@ -32,6 +32,10 @@ FRIENDLY_FEATURES = 3  # hp, x, y
 ALLY_TEAMS = {"sharded", "player"}
 ENEMY_TEAMS = {"crux"}
 
+BLOCK_TURRET = "duo"
+BLOCK_WALL = "wall"
+BLOCK_POWER = "solar-panel"
+
 
 # ------------------------------------------------------------------ #
 # Space constructors                                                   #
