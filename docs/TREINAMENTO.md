@@ -25,8 +25,11 @@ O projeto usa um virtualenv isolado em `rl/venv/`. Crie-o uma única vez:
 # Na raiz do repositório
 python -m venv rl/venv
 
-# Ativar (Linux / macOS)
+# Ativar (Linux / macOS — bash/zsh)
 source rl/venv/bin/activate
+
+# Ativar (fish shell)
+source rl/venv/bin/activate.fish
 
 # Ativar (Windows)
 .\rl\venv\Scripts\activate
@@ -295,8 +298,10 @@ O mod enviou uma linha inválida (comum durante carregamento de mapa). O cliente
 ## 10. Referência Rápida
 
 ```bash
-# 1. Ativar ambiente
+# 1. Ativar ambiente (bash/zsh)
 source rl/venv/bin/activate
+# ou, se usar fish shell:
+source rl/venv/bin/activate.fish
 
 # 2. Verificar testes
 python -m pytest rl/tests/ -v
