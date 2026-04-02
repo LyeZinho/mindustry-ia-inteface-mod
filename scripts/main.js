@@ -21,6 +21,8 @@ let outputWriter = null;
 let inputReader = null;
 let isConnected = false;
 let tickCounter = 0;
+let coreTileX = 0;
+let coreTileY = 0;
 
 // ============================================================================
 // PHASE 2: Socket Server Implementation
@@ -166,6 +168,8 @@ function captureGameState() {
             state.core.x = Math.floor(core.x / 8);
             state.core.y = Math.floor(core.y / 8);
             state.core.size = core.block.size;
+            coreTileX = state.core.x;
+            coreTileY = state.core.y;
         }
         
         if (Vars.player != null) {
@@ -214,16 +218,14 @@ function captureGameState() {
         
         for (let dx = -radius; dx <= radius; dx++) {
             for (let dy = -radius; dy <= radius; dy++) {
-                let worldX = (centerX + dx) * tileSize;
-                let worldY = (centerY + dy) * tileSize;
-                let tile = Vars.world.tile(worldX, worldY);
+                let tile = Vars.world.tile(centerX + dx, centerY + dy);
                 
                 if (tile != null) {
                     let block = tile.block();
                     let build = tile.build;
                     state.grid.push({
-                        x: dx,
-                        y: dy,
+                        x: dx + radius,
+                        y: dy + radius,
                         block: block != null ? block.name : "air",
                         floor: tile.floor().name,
                         team: build != null && build.team != null ? build.team.name : "neutral",
@@ -236,7 +238,8 @@ function captureGameState() {
         
         let allTeams = [Team.sharded, Team.crux, Team.derelict];
         allTeams.forEach(t => {
-            let buildings = t.buildings();
+            let td = t.data();
+            let buildings = td != null ? td.buildings : null;
             if (buildings != null) {
                 buildings.forEach(b => {
                     if (b.x >= (centerX - radius) * tileSize && b.x <= (centerX + radius) * tileSize &&
@@ -358,6 +361,13 @@ function processCommand(commandStr) {
     }
 }
 
+function gridToTile(gridX, gridY) {
+    return Vars.world.tile(
+        coreTileX + (gridX - config.gridRadius),
+        coreTileY + (gridY - config.gridRadius)
+    );
+}
+
 function handleBuildCommand(parts) {
     if (parts.length < 4) {
         Log.info("[Mimi Gateway] BUILD: parâmetros insuficientes");
@@ -375,7 +385,7 @@ function handleBuildCommand(parts) {
         return;
     }
     
-    let worldTile = Vars.world.tile(targetX, targetY);
+    let worldTile = gridToTile(targetX, targetY);
     if (worldTile == null) {
         Log.info("[Mimi Gateway] Tile inválido: " + targetX + "," + targetY);
         return;
@@ -383,14 +393,8 @@ function handleBuildCommand(parts) {
     
     try {
         let team = Vars.player != null ? Vars.player.team() : Team.sharded;
-        let canPlace = Vars.control.input.canPlace(worldTile, blockType, rotation, team);
-        
-        if (canPlace) {
-            Call.constructBlock(team, worldTile, blockType, rotation);
-            Log.info("[Mimi Gateway] Construir: " + blockName + " em " + targetX + "," + targetY);
-        } else {
-            Log.info("[Mimi Gateway] Não pode construir: " + blockName + " em " + targetX + "," + targetY);
-        }
+        worldTile.setNet(blockType, team, rotation);
+        Log.info("[Mimi Gateway] Construído: " + blockName + " em " + targetX + "," + targetY);
     } catch (e) {
         Log.err("[Mimi Gateway] Erro ao construir: " + e);
     }
@@ -429,10 +433,10 @@ function handleUnitMoveCommand(parts) {
         }
         
         // Move the unit to the target position (world coordinates)
-        let worldX = targetX * 8;
-        let worldY = targetY * 8;
+        let absTileX = coreTileX + (targetX - config.gridRadius);
+        let absTileY = coreTileY + (targetY - config.gridRadius);
         
-        unit.moveTo(worldX, worldY);
+        unit.moveTo(absTileX * 8, absTileY * 8);
         Log.info("[Mimi Gateway] Mover unidade " + unitId + " para " + targetX + "," + targetY);
     } catch (e) {
         Log.err("[Mimi Gateway] Erro ao mover unidade " + unitId + ": " + e);
@@ -476,7 +480,7 @@ function handleAttackCommand(parts) {
             return;
         }
         
-        let targetTile = Vars.world.tile(targetX, targetY);
+        let targetTile = gridToTile(targetX, targetY);
         if (targetTile != null && targetTile.build != null) {
             unit.target(targetTile.build);
             Log.info("[Mimi Gateway] Ataque ordenado: unidade " + unitId + " -> bloco em " + targetX + "," + targetY);
@@ -542,7 +546,7 @@ function handleFactoryCommand(parts) {
     let unitType = parts[3] ? parts[3] : "poly";
     
     try {
-        let factoryTile = Vars.world.tile(factoryX, factoryY);
+        let factoryTile = gridToTile(factoryX, factoryY);
         if (factoryTile == null || factoryTile.build == null) {
             Log.info("[Mimi Gateway] FACTORY: tile inválido");
             return;
@@ -582,7 +586,7 @@ function handleRepairCommand(parts) {
     
     let targetX = parseInt(parts[1]);
     let targetY = parseInt(parts[2]);
-    let tile = Vars.world.tile(targetX, targetY);
+    let tile = gridToTile(targetX, targetY);
     
     if (tile == null || tile.build == null) {
         Log.info("[Mimi Gateway] REPAIR: bloco não encontrado");
@@ -606,7 +610,7 @@ function handleDeleteCommand(parts) {
     
     let targetX = parseInt(parts[1]);
     let targetY = parseInt(parts[2]);
-    let tile = Vars.world.tile(targetX, targetY);
+    let tile = gridToTile(targetX, targetY);
     
     if (tile == null || tile.build == null) {
         Log.info("[Mimi Gateway] DELETE: bloco não encontrado");
@@ -634,7 +638,7 @@ function handleUpgradeCommand(parts) {
     let targetY = parseInt(parts[2]);
     
     try {
-        let tile = Vars.world.tile(targetX, targetY);
+        let tile = gridToTile(targetX, targetY);
         if (tile == null || tile.build == null) {
             Log.info("[Mimi Gateway] UPGRADE: bloco não encontrado");
             return;

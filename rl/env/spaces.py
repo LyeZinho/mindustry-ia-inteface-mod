@@ -33,7 +33,7 @@ ALLY_TEAMS = {"sharded", "player"}
 ENEMY_TEAMS = {"crux"}
 
 BLOCK_TURRET = "duo"
-BLOCK_WALL = "wall"
+BLOCK_WALL = "copper-wall"
 BLOCK_POWER = "solar-panel"
 
 
