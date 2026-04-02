@@ -2,20 +2,32 @@
 
 A Mindustry mod that exposes the game's internal API via a TCP socket server, enabling RL agents and AI systems to perceive game state and execute actions in real-time.
 
-**[📖 Guia em Português: GUIA_INSTALACAO_PT.md](./GUIA_INSTALACAO_PT.md)**
+## 📥 Download & Install
 
-## Installation
+**[⬇️ Download mimi-gateway-v1.0.0.zip](./mimi-gateway-v1.0.0.zip)** (5.9 KB)
 
-1. Copy the `mimi-gateway` folder to your Mindustry mods directory:
-   - **Windows**: `%appdata%/Mindustry/mods/`
-   - **Linux**: `~/.local/share/Mindustry/mods/`
-   - **macOS**: `~/Library/Application Support/Mindustry/mods/`
+1. Extract ZIP to your Mindustry mods folder
+2. Rename folder to `mimi-gateway`
+3. Launch Mindustry → Check F1 console for: `[Mimi Gateway] Servidor iniciado na porta 9000`
 
-2. Launch Mindustry and verify the mod loads (check `F1` console for "[Mimi Gateway] Servidor iniciado na porta 9000")
+**Mods folders:**
+- **Windows**: `%appdata%/Mindustry/mods/`
+- **Linux**: `~/.local/share/Mindustry/mods/`
+- **macOS**: `~/Library/Application Support/Mindustry/mods/`
 
-3. Connect your Python/AI client to `localhost:9000`
+## 📖 Guias de Instalação
 
-For detailed step-by-step instructions, see **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** (English) or **[GUIA_INSTALACAO_PT.md](./GUIA_INSTALACAO_PT.md)** (Português).
+- **[GUIA_INSTALACAO_PT.md](./GUIA_INSTALACAO_PT.md)** - Português (passo-a-passo)
+- **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** - English (detailed)
+- **[RELEASES.md](./RELEASES.md)** - Release notes & download
+
+## ⚡ Quick Test
+
+```bash
+python3 test_mimi_client.py
+```
+
+This will test all 9 commands and verify the mod is working.
 
 ## Architecture
 
