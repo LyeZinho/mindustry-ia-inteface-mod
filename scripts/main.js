@@ -98,7 +98,6 @@ function communicationLoop() {
                 sendGameState();
                 tickCounter = 0;
             }
-            tickCounter++;
             
             // PHASE 4: Process commands from Python
             if (inputReader != null) {
@@ -674,8 +673,7 @@ function handleUpgradeCommand(parts) {
 // ============================================================================
 // PHASE 5: Event Triggers
 // ============================================================================
-Events.on(Trigger.update, () => {
-    // Only increment when player is in game
+Events.run(Trigger.update, () => {
     if (Vars.state.isGame()) {
         tickCounter++;
     }
