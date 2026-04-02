@@ -2,7 +2,7 @@
 MindustryEnv — Gymnasium environment wrapping the Mimi Gateway TCP mod.
 
 Observation: Dict{"grid": (4,31,31), "features": (43,)}
-Action:      Dict{"action_type": Discrete(8), "x": Box(1,), "y": Box(1,)}
+Action:      MultiDiscrete([8, 31, 31]) — [action_type, x, y]
 """
 from __future__ import annotations
 
@@ -64,9 +64,9 @@ class MindustryEnv(gym.Env):
         if self._client is None:
             raise RuntimeError("Must call reset() before step()")
         
-        action_type = int(action["action_type"])
-        x = int(action["x"][0])
-        y = int(action["y"][0])
+        action_type = int(action[0])
+        x = int(action[1])
+        y = int(action[2])
 
         self._execute_action(action_type, x, y)
 

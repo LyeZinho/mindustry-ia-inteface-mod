@@ -41,7 +41,7 @@ def test_step_returns_five_tuple():
     """step() returns (obs, reward, terminated, truncated, info)."""
     env = MindustryEnv(client=make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE]))
     env.reset()
-    action = {"action_type": 0, "x": np.array([15], dtype=np.int32), "y": np.array([15], dtype=np.int32)}
+    action = np.array([0, 15, 15], dtype=np.int64)
     result = env.step(action)
     assert len(result) == 5
     obs, reward, terminated, truncated, info = result
@@ -56,7 +56,7 @@ def test_step_build_turret_sends_build_command():
     client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
     env = MindustryEnv(client=client)
     env.reset()
-    action = {"action_type": 1, "x": np.array([10], dtype=np.int32), "y": np.array([12], dtype=np.int32)}
+    action = np.array([1, 10, 12], dtype=np.int64)
     env.step(action)
     client.build.assert_called_with("duo", 10, 12, rotation=0)
 
@@ -66,7 +66,7 @@ def test_step_wait_sends_msg():
     client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
     env = MindustryEnv(client=client)
     env.reset()
-    action = {"action_type": 0, "x": np.array([0], dtype=np.int32), "y": np.array([0], dtype=np.int32)}
+    action = np.array([0, 0, 0], dtype=np.int64)
     env.step(action)
     client.message.assert_any_call("WAIT")
 
@@ -77,7 +77,7 @@ def test_episode_terminates_on_core_destroyed():
     client = make_mock_client(states=[MOCK_STATE, dead_state])
     env = MindustryEnv(client=client)
     env.reset()
-    action = {"action_type": 0, "x": np.array([0], dtype=np.int32), "y": np.array([0], dtype=np.int32)}
+    action = np.array([0, 0, 0], dtype=np.int64)
     _, _, terminated, _, _ = env.step(action)
     assert terminated is True
 
@@ -90,7 +90,7 @@ def test_episode_truncates_on_max_steps():
     client.receive_state.side_effect = states
     env = MindustryEnv(client=client, max_steps=5)
     env.reset()
-    action = {"action_type": 0, "x": np.array([0], dtype=np.int32), "y": np.array([0], dtype=np.int32)}
+    action = np.array([0, 0, 0], dtype=np.int64)
     for _ in range(4):
         _, _, terminated, truncated, _ = env.step(action)
     assert not truncated

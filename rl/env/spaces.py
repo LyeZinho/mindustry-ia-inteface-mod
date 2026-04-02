@@ -5,10 +5,10 @@ Observation: Dict with two tensors:
   "grid":     float32 (4, 31, 31)  — CNN input
   "features": float32 (43,)        — MLP input
 
-Action: Dict with:
-  "action_type": Discrete(8)
-  "x":           Box(0, 30, (1,), int32)
-  "y":           Box(0, 30, (1,), int32)
+Action: MultiDiscrete([8, 31, 31])
+  action[0]: action_type  ∈ {0..7}
+  action[1]: x            ∈ {0..30}
+  action[2]: y            ∈ {0..30}
 """
 from __future__ import annotations
 
@@ -48,12 +48,8 @@ def make_obs_space() -> spaces.Dict:
     })
 
 
-def make_action_space() -> spaces.Dict:
-    return spaces.Dict({
-        "action_type": spaces.Discrete(NUM_ACTIONS),
-        "x": spaces.Box(0, GRID_SIZE - 1, shape=(1,), dtype=np.int32),
-        "y": spaces.Box(0, GRID_SIZE - 1, shape=(1,), dtype=np.int32),
-    })
+def make_action_space() -> spaces.MultiDiscrete:
+    return spaces.MultiDiscrete([NUM_ACTIONS, GRID_SIZE, GRID_SIZE])
 
 
 # ------------------------------------------------------------------ #

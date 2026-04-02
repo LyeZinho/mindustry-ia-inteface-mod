@@ -31,11 +31,8 @@ def test_obs_space_shape():
 
 def test_action_space_structure():
     act = make_action_space()
-    assert isinstance(act, spaces.Dict)
-    assert isinstance(act["action_type"], spaces.Discrete)
-    assert act["action_type"].n == 8
-    assert act["x"].shape == (1,)
-    assert act["y"].shape == (1,)
+    assert isinstance(act, spaces.MultiDiscrete)
+    assert list(act.nvec) == [8, 31, 31]
 
 
 def test_parse_observation_returns_correct_shapes():
