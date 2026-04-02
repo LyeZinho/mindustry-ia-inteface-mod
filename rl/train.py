@@ -12,7 +12,9 @@ Requires:
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
+from typing import Optional
 
 from stable_baselines3 import A2C
 from stable_baselines3.common.monitor import Monitor
@@ -31,6 +33,29 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n-steps", type=int, default=128, dest="n_steps")
     p.add_argument("--models-dir", default="rl/models")
     p.add_argument("--logs-dir", default="rl/logs")
+    p.add_argument(
+        "--server-jar",
+        default="server-release.jar",
+        dest="server_jar",
+        help="Path to server-release.jar",
+    )
+    p.add_argument(
+        "--maps",
+        default=None,
+        help="Comma-separated map names to cycle (default: built-in list)",
+    )
+    p.add_argument(
+        "--no-server",
+        action="store_true",
+        dest="no_server",
+        help="Skip spawning server (connect to already-running server)",
+    )
+    p.add_argument(
+        "--server-data-dir",
+        default="rl/server_data",
+        dest="server_data_dir",
+        help="Directory for Mindustry server data (saves, config)",
+    )
     return p.parse_args()
 
 
@@ -40,31 +65,48 @@ def main() -> None:
     Path(args.models_dir).mkdir(parents=True, exist_ok=True)
     Path(args.logs_dir).mkdir(parents=True, exist_ok=True)
 
-    env = Monitor(
-        MindustryEnv(host=args.host, port=args.port, max_steps=args.max_steps),
-        filename=f"{args.logs_dir}/monitor",
-    )
+    maps = [m.strip() for m in args.maps.split(",")] if args.maps else None
 
-    model = A2C(
-        policy="MultiInputPolicy",
-        env=env,
-        learning_rate=args.lr,
-        n_steps=args.n_steps,
-        gamma=0.99,
-        gae_lambda=0.95,
-        ent_coef=0.01,
-        verbose=1,
-        tensorboard_log=args.logs_dir,
-    )
+    server: Optional["MindustryServer"] = None
+    if not args.no_server:
+        from rl.server.manager import MindustryServer
+        server = MindustryServer(jar_path=args.server_jar, data_dir=args.server_data_dir)
+        print(f"Starting Mindustry server ({args.server_jar})...")
+        server.start()
+        print("Server ready. Connecting agent...")
+        time.sleep(3)
 
-    callbacks = make_callbacks(save_path=args.models_dir)
+    try:
+        env = Monitor(
+            MindustryEnv(host=args.host, port=args.port, max_steps=args.max_steps, maps=maps),
+            filename=f"{args.logs_dir}/monitor",
+        )
 
-    print(f"Starting A2C training for {args.timesteps:,} timesteps...")
-    model.learn(total_timesteps=args.timesteps, callback=callbacks)
+        model = A2C(
+            policy="MultiInputPolicy",
+            env=env,
+            learning_rate=args.lr,
+            n_steps=args.n_steps,
+            gamma=0.99,
+            gae_lambda=0.95,
+            ent_coef=0.01,
+            verbose=1,
+            tensorboard_log=args.logs_dir,
+        )
 
-    final_path = f"{args.models_dir}/final_model"
-    model.save(final_path)
-    print(f"Training complete. Model saved to {final_path}.zip")
+        callbacks = make_callbacks(save_path=args.models_dir)
+
+        print(f"Starting A2C training for {args.timesteps:,} timesteps...")
+        model.learn(total_timesteps=args.timesteps, callback=callbacks)
+
+        final_path = f"{args.models_dir}/final_model"
+        model.save(final_path)
+        print(f"Training complete. Model saved to {final_path}.zip")
+
+    finally:
+        if server is not None:
+            print("Stopping server...")
+            server.stop()
 
 
 if __name__ == "__main__":
