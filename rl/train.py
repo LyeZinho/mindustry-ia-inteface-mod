@@ -12,6 +12,7 @@ Requires:
 from __future__ import annotations
 
 import argparse
+import socket
 import time
 from pathlib import Path
 from typing import Optional
@@ -21,6 +22,17 @@ from stable_baselines3.common.monitor import Monitor
 
 from rl.env.mindustry_env import MindustryEnv
 from rl.callbacks.training_callbacks import make_callbacks
+
+
+def _wait_for_port(host: str, port: int, timeout: float = 60.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1.0):
+                return
+        except OSError:
+            time.sleep(0.5)
+    raise TimeoutError(f"Mod TCP port {port} not available after {timeout:.0f}s")
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,8 +85,9 @@ def main() -> None:
         server = MindustryServer(jar_path=args.server_jar, data_dir=args.server_data_dir)
         print(f"Starting Mindustry server ({args.server_jar})...")
         server.start()
+        print("Waiting for mod TCP port...")
+        _wait_for_port(args.host, args.port)
         print("Server ready. Connecting agent...")
-        time.sleep(3)
 
     try:
         env = Monitor(
