@@ -4,15 +4,19 @@ Mod para Mindustry que expõe a API do jogo via socket TCP, permitindo que agent
 
 ---
 
-## Instalação Rápida
+## Instalação Rápida (A Partir do ZIP)
 
-### 1. Localize a pasta de mods do Mindustry
+### 1. Baixe o arquivo ZIP
+
+**[⬇️ Clique aqui para baixar: mimi-gateway-v1.0.0.zip](./mimi-gateway-v1.0.0.zip)**
+
+### 2. Localize a pasta de mods do Mindustry
 
 **Windows:**
 ```
 %APPDATA%\Mindustry\mods\
 ```
-(Ou: Abra o Explorador de Arquivos e digite `%APPDATA%` na barra de endereço)
+(Abra o Explorador de Arquivos e digite `%APPDATA%` na barra de endereço)
 
 **Linux:**
 ```
@@ -24,29 +28,31 @@ Mod para Mindustry que expõe a API do jogo via socket TCP, permitindo que agent
 ~/Library/Application Support/Mindustry/mods/
 ```
 
-### 2. Copie os arquivos do mod
+### 3. Extraia o ZIP
 
-Crie uma pasta chamada `mimi-gateway` dentro da pasta de mods e copie:
+1. Baixe o ZIP (`mimi-gateway-v1.0.0.zip`)
+2. **Extraia** em um local temporário
+3. Você verá uma pasta com estes arquivos:
+   ```
+   mod.hjson
+   scripts/main.js
+   INSTALL.txt
+   ```
 
-```
-~/.local/share/Mindustry/mods/mimi-gateway/
-├── mod.hjson
-└── scripts/
-    └── main.js
-```
+### 4. Copie para a pasta de mods
 
-**Opção A - Usando Git (recomendado):**
-```bash
-cd ~/.local/share/Mindustry/mods/
-git clone https://github.com/seu-usuario/mindustry-ia-interface-mod.git mimi-gateway
-```
+1. Renomeie a pasta extraída para **exatamente**: `mimi-gateway`
+2. Copie a pasta **inteira** para sua pasta de mods do Mindustry
+3. A estrutura final deve ser:
+   ```
+   ~/.local/share/Mindustry/mods/
+   └── mimi-gateway/
+       ├── mod.hjson
+       ├── scripts/main.js
+       └── INSTALL.txt
+   ```
 
-**Opção B - Copiar manualmente:**
-1. Baixe os arquivos do repositório como ZIP
-2. Extraia em uma pasta chamada `mimi-gateway`
-3. Copie para a pasta de mods do Mindustry
-
-### 3. Inicie o Mindustry
+### 5. Inicie o Mindustry
 
 1. Abra Mindustry
 2. Inicie uma partida (Campanha ou Sandbox)
@@ -57,6 +63,17 @@ git clone https://github.com/seu-usuario/mindustry-ia-interface-mod.git mimi-gat
    ```
 
 Se ver a mensagem, a instalação foi bem-sucedida! ✅
+
+---
+
+## Alternativa: Usando Git
+
+Se preferir clonar direto:
+
+```bash
+cd ~/.local/share/Mindustry/mods/
+git clone https://github.com/seu-usuario/mindustry-ia-interface-mod.git mimi-gateway
+```
 
 ---
 
