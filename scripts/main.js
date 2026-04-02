@@ -105,7 +105,7 @@ function communicationLoop() {
                 let ready = inputReader.ready();
                 if (ready) {
                     let command = inputReader.readLine();
-                    if (command != null && command.length() > 0) {
+                    if (command != null && command.length > 0) {
                         processCommand(command);
                     }
                 }
@@ -157,7 +157,7 @@ function captureGameState() {
         let core = team != null ? team.core() : null;
         if (core != null && core.items != null) {
             let itemsArray = Vars.content.items();
-            for (let i = 0; i < itemsArray.size(); i++) {
+                for (let i = 0; i < itemsArray.size; i++) {
                 let item = itemsArray.get(i);
                 let amount = core.items.get(item);
                 state.resources[item.name] = amount;
