@@ -23,6 +23,7 @@ let isConnected = false;
 let tickCounter = 0;
 let coreTileX = 0;
 let coreTileY = 0;
+let playerUnitId = -1;
 
 // ============================================================================
 // PHASE 2: Socket Server Implementation
@@ -143,7 +144,7 @@ function captureGameState() {
         resources: {},
         power: { produced: 0, consumed: 0, stored: 0, capacity: 0 },
         core: { hp: 0, x: 0, y: 0, size: 0 },
-        player: { x: 0, y: 0 },
+        player: { x: 0, y: 0, alive: false, hp: 0.0 },
         enemies: [],
         friendlyUnits: [],
         buildings: [],
@@ -151,15 +152,16 @@ function captureGameState() {
     };
     
     try {
-        let team = Vars.player != null ? Vars.player.team() : null;
-        if (team == null) {
-            team = Vars.state.rules.teams.get(Team.sharded);
-        }
+        // Use Team enum directly so .data() and Units.nearby() work correctly.
+        // Vars.state.rules.teams.get(Team.sharded) returns Rules.TeamRule which
+        // has no .core() or .data() method — always use the Team enum object.
+        let team = Vars.player != null ? Vars.player.team() : Team.sharded;
+        let coreData = team.data();
         
-        let core = team != null ? team.core() : null;
+        let core = coreData != null ? coreData.core() : null;
         if (core != null && core.items != null) {
             let itemsArray = Vars.content.items();
-                for (let i = 0; i < itemsArray.size; i++) {
+            for (let i = 0; i < itemsArray.size; i++) {
                 let item = itemsArray.get(i);
                 let amount = core.items.get(item);
                 state.resources[item.name] = amount;
@@ -177,8 +179,29 @@ function captureGameState() {
             state.player.y = Math.floor(Vars.player.y / 8);
         }
         
-        if (team != null) {
-            let powerGraph = team.data().power;
+        state.player.alive = false;
+        state.player.hp = 0.0;
+        if (playerUnitId >= 0) {
+            let found = false;
+            let allTeamData = Team.sharded.data();
+            if (allTeamData != null && allTeamData.units != null) {
+                allTeamData.units.forEach(u => {
+                    if (u != null && u.id === playerUnitId) {
+                        state.player.x = Math.floor(u.x / 8);
+                        state.player.y = Math.floor(u.y / 8);
+                        state.player.hp = Math.floor((u.health / u.maxHealth) * 100) / 100;
+                        state.player.alive = true;
+                        found = true;
+                    }
+                });
+            }
+            if (!found) {
+                state.player.alive = false;
+            }
+        }
+        
+        if (coreData != null) {
+            let powerGraph = coreData.power;
             if (powerGraph != null) {
                 state.power.produced = Math.floor(powerGraph.getPowerProduced() * 100) / 100;
                 state.power.consumed = Math.floor(powerGraph.getPowerUsed() * 100) / 100;
@@ -203,18 +226,16 @@ function captureGameState() {
             });
         });
         
-        if (team != null) {
-            Units.nearby(team, centerX * tileSize, centerY * tileSize, radius * tileSize, (unit) => {
-                state.friendlyUnits.push({
-                    id: unit.id,
-                    type: unit.type.name,
-                    hp: Math.floor((unit.health / unit.maxHealth) * 100) / 100,
-                    x: Math.floor(unit.x / 8),
-                    y: Math.floor(unit.y / 8),
-                    command: unit.command != null ? unit.command.name : "idle"
-                });
+        Units.nearby(team, centerX * tileSize, centerY * tileSize, radius * tileSize, (unit) => {
+            state.friendlyUnits.push({
+                id: unit.id,
+                type: unit.type.name,
+                hp: Math.floor((unit.health / unit.maxHealth) * 100) / 100,
+                x: Math.floor(unit.x / 8),
+                y: Math.floor(unit.y / 8),
+                command: unit.command != null ? unit.command.name : "idle"
             });
-        }
+        });
         
         for (let dx = -radius; dx <= radius; dx++) {
             for (let dy = -radius; dy <= radius; dy++) {
@@ -596,11 +617,10 @@ function handleRepairCommand(parts) {
         return;
     }
     
-    let team = Vars.player != null ? Vars.player.team() : Team.sharded;
     let build = tile.build;
     
     if (build.health < build.maxHealth) {
-        Call.setHealth(build, build.health + build.maxHealth * 0.5);
+        build.heal(build.maxHealth * 0.5);
         Log.info("[Mimi Gateway] REPAIR: " + targetX + "," + targetY);
     }
 }
@@ -685,18 +705,27 @@ function handleResetCommand(parts) {
     // Must execute map load on the game thread
     Core.app.post(() => {
         try {
+            let allMaps = Vars.maps.all();
+            Log.info("[Mimi Gateway] Mapas disponíveis: " + allMaps.size);
+
+            if (allMaps.size === 0) {
+                Vars.maps.reload();
+                allMaps = Vars.maps.all();
+                Log.info("[Mimi Gateway] Após reload: " + allMaps.size + " mapas");
+            }
+
             let map = null;
 
             if (mapName != null) {
                 // Try exact name match first, then file name match
-                map = Maps.all().find(m =>
+                map = allMaps.find(m =>
                     m.name() === mapName ||
                     (m.file != null && m.file.nameWithoutExtension() === mapName)
                 );
             }
 
             if (map == null) {
-                map = Maps.all().first();
+                map = allMaps.first();
                 if (map != null) {
                     Log.info("[Mimi Gateway] Mapa '" + mapName + "' não encontrado, usando: " + map.name());
                 }
@@ -708,10 +737,28 @@ function handleResetCommand(parts) {
             }
 
             let rules = map.applyRules(Gamemode.survival);
-            Vars.logic.reset();
             Vars.world.loadMap(map, rules);
-            Vars.state.set(State.playing);
             Vars.logic.play();
+
+            // Spawn player unit (poly) at core position
+            Core.app.post(() => {
+                try {
+                    let coreData = Team.sharded.data();
+                    let core = coreData != null ? coreData.core() : null;
+                    if (core != null) {
+                        let polyType = Vars.content.units().find(u => u.name === "poly");
+                        if (polyType != null) {
+                            let spawnedUnit = Unit.create(polyType, Team.sharded);
+                            spawnedUnit.set(core.x, core.y);
+                            spawnedUnit.add();
+                            playerUnitId = spawnedUnit.id;
+                            Log.info("[Mimi Gateway] Player unit spawned id=" + playerUnitId);
+                        }
+                    }
+                } catch (e) {
+                    Log.err("[Mimi Gateway] Erro ao spawnar player unit: " + e);
+                }
+            });
 
             // Reset tick counter so state is sent promptly after load
             tickCounter = config.updateInterval;
@@ -719,7 +766,7 @@ function handleResetCommand(parts) {
             Log.info("[Mimi Gateway] RESET completo: " + map.name());
         } catch (e) {
             Log.err("[Mimi Gateway] Erro no RESET: " + e);
-            if (config.debug) Log.err(e.stack);
+            Log.err(e.stack);
         }
     });
 }
