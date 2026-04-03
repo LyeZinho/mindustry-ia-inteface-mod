@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from rl.env.spaces import ACTION_NAMES
+
 _PALETTE = {
     "bg_fig":  "#1e1e2e",
     "bg_ax":   "#181825",
@@ -29,7 +31,7 @@ _PALETTE = {
     "surface": "#313244",
 }
 
-_ACTION_LABELS = ["WAIT", "MOVE", "BUILD\nTRRT", "BUILD\nWALL", "BUILD\nPWR", "BUILD\nDRL", "REPAIR"]
+_ACTION_LABELS = ACTION_NAMES
 
 
 def load_monitor_csv(source: str | io.StringIO) -> pd.DataFrame:
@@ -89,11 +91,11 @@ def build_figure():
     fig.canvas.manager.set_window_title("Mindustry RL — Training Dashboard")
 
     gs = gridspec.GridSpec(
-        7, 3,
+        8, 3,
         figure=fig,
         hspace=0.55,
         wspace=0.38,
-        height_ratios=[2.5, 2.0, 2.0, 1.8, 1.8, 1.8, 0.7],
+        height_ratios=[2.5, 2.0, 2.0, 1.8, 1.8, 1.8, 1.8, 0.7],
     )
 
     ax_reward   = fig.add_subplot(gs[0, 0])
@@ -119,7 +121,9 @@ def build_figure():
     ax_action_dist_ep = fig.add_subplot(gs[5, 1])
     ax_action_dist_roll = fig.add_subplot(gs[5, 2])
 
-    ax_stats    = fig.add_subplot(gs[6, :])
+    ax_ext_resources = fig.add_subplot(gs[6, :])
+
+    ax_stats    = fig.add_subplot(gs[7, :])
     ax_stats.axis("off")
 
     axes = {
@@ -140,6 +144,7 @@ def build_figure():
         "penalty_freq": ax_penalty_freq,
         "action_dist_ep": ax_action_dist_ep,
         "action_dist_roll": ax_action_dist_roll,
+        "ext_resources": ax_ext_resources,
         "stats":     ax_stats,
     }
     return fig, axes
@@ -190,6 +195,14 @@ def make_updater(axes, csv_path: str, metrics_path: str, window: int):
             _waiting(axes["latency"], "Step Latency + Jitter (ms)")
             _waiting(axes["counts"], "Buildings / Units")
             _waiting(axes["resources"], "Resource Throughput")
+
+        metrics_history = _state.get("metrics_history", [])
+        if metrics:
+            metrics_history.append(metrics)
+            if len(metrics_history) > 200:
+                metrics_history = metrics_history[-200:]
+            _state["metrics_history"] = metrics_history
+        _draw_extended_resources(axes["ext_resources"], metrics_history)
 
         episode_metrics = metrics.get("episode_metrics", {})
         if episode_metrics:
@@ -501,26 +514,49 @@ def _draw_action_dist_per_episode(ax, metrics: list) -> None:
         ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
                 ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
         return
-    
+
     latest = metrics[-1].get("episode_metrics", {})
     action_dist = latest.get("action_dist", {})
-    
+
     if not action_dist:
         ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
                 ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
         return
-    
+
     labels = list(action_dist.keys())
     values = list(action_dist.values())
     colors = [_PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"],
               _PALETTE["yellow"], _PALETTE["peach"], _PALETTE["green"], _PALETTE["purple"]]
-    
-    xs = list(range(len(labels)))
-    ax.bar(xs, values, color=colors[:len(labels)], edgecolor=_PALETTE["bg_fig"], width=0.7)
-    ax.set_xticks(xs)
-    ax.set_xticklabels([label[:8] for label in labels], fontsize=6, rotation=45, ha="right")
-    ax.set_ylim(0, 1)
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+
+    nonzero = [(l, v, c) for l, v, c in zip(labels, values, colors * 2) if v > 0]
+    if not nonzero:
+        ax.text(0.5, 0.5, "Sem dados de ação", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    nz_labels, nz_values, nz_colors = zip(*nonzero)
+
+    wedges, texts, autotexts = ax.pie(
+        nz_values,
+        labels=None,
+        colors=nz_colors,
+        autopct=lambda p: f"{p:.1f}%" if p > 4 else "",
+        startangle=90,
+        wedgeprops={"edgecolor": _PALETTE["bg_fig"], "linewidth": 0.8},
+        textprops={"fontsize": 7, "color": _PALETTE["text"]},
+    )
+    for at in autotexts:
+        at.set_fontsize(6)
+        at.set_color(_PALETTE["bg_fig"])
+
+    ax.legend(
+        wedges, nz_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=min(4, len(nz_labels)),
+        fontsize=6,
+        frameon=False,
+        labelcolor=_PALETTE["subtext"],
+    )
 
 
 def _draw_action_dist_rolling(ax, metrics: list) -> None:
@@ -530,43 +566,86 @@ def _draw_action_dist_rolling(ax, metrics: list) -> None:
         ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
                 ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
         return
-    
-    window = 100
-    window_metrics = metrics[-window:] if len(metrics) >= window else metrics
-    
-    if len(window_metrics) < 2:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-    
-    action_counts = {}
+
+    window_metrics = metrics[-100:] if len(metrics) >= 100 else metrics
+    action_counts: dict = {}
     for m in window_metrics:
-        action_dist = m.get("episode_metrics", {}).get("action_dist", {})
-        for action, pct in action_dist.items():
-            if action not in action_counts:
-                action_counts[action] = 0
-            action_counts[action] += pct
-    
+        for action, pct in m.get("episode_metrics", {}).get("action_dist", {}).items():
+            action_counts[action] = action_counts.get(action, 0) + pct
+
     if not action_counts:
         ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
                 ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
         return
-    
-    num_episodes = len(window_metrics)
-    for action in action_counts:
-        action_counts[action] /= num_episodes
-    
+
+    n = len(window_metrics)
     labels = list(action_counts.keys())
-    values = list(action_counts.values())
-    colors = [_PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"],
-              _PALETTE["yellow"], _PALETTE["peach"], _PALETTE["green"], _PALETTE["purple"]]
-    
-    xs = list(range(len(labels)))
-    ax.bar(xs, values, color=colors[:len(labels)], edgecolor=_PALETTE["bg_fig"], width=0.7)
-    ax.set_xticks(xs)
-    ax.set_xticklabels([label[:8] for label in labels], fontsize=6, rotation=45, ha="right")
-    ax.set_ylim(0, 1)
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+    values = [v / n for v in action_counts.values()]
+    colors = [_PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"], _PALETTE["yellow"],
+              _PALETTE["peach"], _PALETTE["green"], _PALETTE["purple"],
+              _PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"], _PALETTE["yellow"],
+              _PALETTE["peach"]]
+
+    nonzero = [(l, v, c) for l, v, c in zip(labels, values, colors) if v > 0]
+    if not nonzero:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    nz_labels, nz_values, nz_colors = zip(*nonzero)
+
+    wedges, _, autotexts = ax.pie(
+        nz_values,
+        labels=None,
+        colors=nz_colors,
+        autopct=lambda p: f"{p:.1f}%" if p > 4 else "",
+        startangle=90,
+        wedgeprops={"edgecolor": _PALETTE["bg_fig"], "linewidth": 0.8},
+        textprops={"fontsize": 7, "color": _PALETTE["text"]},
+    )
+    for at in autotexts:
+        at.set_fontsize(6)
+        at.set_color(_PALETTE["bg_fig"])
+
+    ax.legend(
+        wedges, nz_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.22),
+        ncol=min(4, len(nz_labels)),
+        fontsize=6,
+        frameon=False,
+        labelcolor=_PALETTE["subtext"],
+    )
+
+
+def _draw_extended_resources(ax, metrics: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Extended Resources")
+    if not metrics:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+
+    resource_series: dict[str, list[float]] = {
+        "silicon": [], "oil": [], "water": [], "metaglass": []
+    }
+    for m in metrics:
+        world_res = m.get("world", {}).get("resources", {})
+        for rname in resource_series:
+            resource_series[rname].append(float(world_res.get(rname, 0.0)))
+
+    colors = [_PALETTE["teal"], _PALETTE["peach"], _PALETTE["blue"], _PALETTE["purple"]]
+    xs = list(range(len(metrics)))
+    any_data = False
+    for (rname, series), color in zip(resource_series.items(), colors):
+        if any(v > 0 for v in series):
+            ax.plot(xs, series, color=color, linewidth=1.2, label=rname)
+            any_data = True
+
+    if any_data:
+        ax.legend(fontsize=6, frameon=False, labelcolor=_PALETTE["subtext"])
+    else:
+        ax.text(0.5, 0.5, "Sem silicon/oil/water/metaglass", transform=ax.transAxes,
+                ha="center", va="center", fontsize=7, color=_PALETTE["subtext"])
 
 
 def parse_args() -> argparse.Namespace:

@@ -197,3 +197,42 @@ def test_existing_draw_length_still_works():
     _draw_length(ax, df, window=2)
     assert ax.get_title() != ""
     plt.close("all")
+
+
+# TDD: NEW TESTS FOR TASK 6 (rolling pie + extended resources)
+
+def test_draw_action_dist_rolling_renders_pie():
+    """Test _draw_action_dist_rolling renders as pie chart (not bar)."""
+    from rl.dashboard import _draw_action_dist_rolling
+    metrics = [
+        {"episode_metrics": {"action_dist": {
+            "WAIT": 0.1, "MOVE": 0.2, "BUILD_TURRET": 0.15,
+            "BUILD_WALL": 0.15, "BUILD_POWER": 0.2, "BUILD_DRILL": 0.15, "REPAIR": 0.05
+        }}} for _ in range(10)
+    ]
+    ax = plt.subplot(1, 1, 1)
+    _draw_action_dist_rolling(ax, metrics)
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_draw_extended_resources_renders_with_data():
+    """Test _draw_extended_resources renders with silicon/oil/water/metaglass data."""
+    from rl.dashboard import _draw_extended_resources
+    metrics = [
+        {"world": {"resources": {"silicon": 100.0, "oil": 50.0, "water": 200.0, "metaglass": 30.0}}}
+        for _ in range(5)
+    ]
+    ax = plt.subplot(1, 1, 1)
+    _draw_extended_resources(ax, metrics)
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_draw_extended_resources_handles_empty():
+    """Test _draw_extended_resources handles empty metrics gracefully."""
+    from rl.dashboard import _draw_extended_resources
+    ax = plt.subplot(1, 1, 1)
+    _draw_extended_resources(ax, [])
+    assert ax.get_title() != ""
+    plt.close("all")
