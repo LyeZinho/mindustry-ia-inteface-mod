@@ -69,6 +69,7 @@ class MindustryEnv(gym.Env):
 
         self._prev_state: Optional[Dict[str, Any]] = None
         self._step_count: int = 0
+        self._action_history: list[int] = []  # Track last N actions for inactivity detection
 
     def reset(
         self,
@@ -96,6 +97,7 @@ class MindustryEnv(gym.Env):
 
                 self._prev_state = state
                 self._step_count = 0
+                self._action_history = []
                 return parse_observation(state), {}
 
             except OSError as exc:
@@ -154,7 +156,18 @@ class MindustryEnv(gym.Env):
         terminated = core_hp <= 0.0 or not player_alive
         truncated = self._step_count >= self.max_steps
 
-        reward = compute_reward(self._prev_state, state, done=terminated)
+        reward = compute_reward(
+            self._prev_state,
+            state,
+            done=terminated,
+            action_taken=action_type,
+            action_history=self._action_history,
+        )
+
+        # Track action history (keep last 10 for inactivity detection)
+        self._action_history.append(action_type)
+        if len(self._action_history) > 10:
+            self._action_history.pop(0)
         self._prev_state = state
 
         info: Dict[str, Any] = {
@@ -163,6 +176,7 @@ class MindustryEnv(gym.Env):
             "power": state.get("power", {}),
             "buildings": len(state.get("buildings", [])),
             "units": len(state.get("friendlyUnits", [])),
+            "build_failed": bool(state.get("actionFailed", False)),
         }
         return obs, reward, terminated, truncated, info
 
