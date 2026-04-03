@@ -9,7 +9,7 @@ const config = {
     port: 9000,
     updateInterval: 10,
     gridRadius: 15,
-    debug: true
+    debug: false
 };
 
 // Read TCP port from mimi_port.txt if present (used for multi-instance training).
@@ -136,7 +136,7 @@ function communicationLoop() {
                 }
             }
             
-            java.lang.Thread.sleep(100); // ~10Hz loop
+            java.lang.Thread.sleep(50); // ~20Hz loop
             
         } catch (e) {
             if (config.debug) Log.info("[Mimi Gateway] Loop erro: " + e);

@@ -51,7 +51,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--timesteps", type=int, default=1_000_000)
     p.add_argument("--max-steps", type=int, default=5000, dest="max_steps")
     p.add_argument("--lr", type=float, default=3e-4)
-    p.add_argument("--n-steps", type=int, default=32, dest="n_steps")
+    p.add_argument("--n-steps", type=int, default=256, dest="n_steps")
     p.add_argument("--models-dir", default="rl/models")
     p.add_argument("--logs-dir", default="rl/logs")
     p.add_argument(

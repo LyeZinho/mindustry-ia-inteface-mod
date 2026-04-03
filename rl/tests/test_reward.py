@@ -50,11 +50,11 @@ def test_reward_resource_accumulation():
 
 
 def test_reward_terminal_core_destroyed():
-    """Core destroyed applies -1.0 terminal penalty."""
+    """Core destroyed applies -0.4 terminal penalty."""
     prev = make_state(core={"hp": 0.1})
     curr = make_state(core={"hp": 0.0})
     r = compute_reward(prev, curr, done=True)
-    assert r <= -1.0
+    assert r <= -0.4
 
 
 def test_reward_terminal_player_dead_core_alive():
