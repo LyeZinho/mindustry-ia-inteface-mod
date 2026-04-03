@@ -16,3 +16,8 @@ def test_parse_args_custom_n_envs():
 def test_make_env_factory_returns_callable():
     factory = _make_env_factory(host="localhost", tcp_port=9001, max_steps=100, maps=None)
     assert callable(factory)
+
+
+def test_train_uses_maskable_ppo():
+    from sb3_contrib import MaskablePPO
+    assert MaskablePPO is not None

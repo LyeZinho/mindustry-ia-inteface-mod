@@ -47,7 +47,7 @@ def make_callbacks(
     checkpoint_cb = CheckpointCallback(
         save_freq=save_freq,
         save_path=save_path,
-        name_prefix="mindustry_a2c",
+        name_prefix="mindustry_ppo",
         verbose=verbose,
     )
     reward_logger = RewardLoggerCallback(verbose=verbose)

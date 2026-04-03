@@ -28,7 +28,7 @@ def make_state(**overrides):
 def test_reward_core_hp_loss():
     """Losing core HP is penalized (large enough drop to dominate other bonuses)."""
     prev = make_state(core={"hp": 1.0})
-    curr = make_state(core={"hp": 0.4})
+    curr = make_state(core={"hp": 0.05})
     r = compute_reward(prev, curr, done=False)
     assert r < 0
 
@@ -72,7 +72,7 @@ def test_reward_player_alive_bonus():
     prev = make_state()
     curr = make_state()
     r = compute_reward(prev, curr, done=False)
-    # Should include +0.10 player alive bonus minus time penalty → positive
+    # Should include +0.20 player alive bonus minus time penalty → positive
     assert r > 0
 
 
@@ -113,10 +113,10 @@ def test_no_drill_bonus_when_copper_increases_less_than_5():
     assert r_large > r_small  # drill bonus fires for +6, not for +3
 
 
-def test_time_penalty_halved():
-    """Time penalty should now be 0.0005 not 0.001."""
+def test_time_penalty():
+    """Time penalty should be 0.002."""
     prev = {"resources": {}, "core": {"hp": 0.5}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": False}}
     curr = {"resources": {}, "core": {"hp": 0.5}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": False}}
     r = compute_reward(prev, curr, done=False)
-    # No positive signals, no negative terminal → just time penalty (-0.0005)
-    assert abs(r - (-0.0005)) < 1e-6
+    # No positive signals, no negative terminal → just time penalty (-0.002)
+    assert abs(r - (-0.002)) < 1e-6

@@ -192,3 +192,19 @@ def test_env_accepts_tcp_port_parameter():
     """MindustryEnv should accept tcp_port and use it to connect."""
     env = MindustryEnv(tcp_port=9002, client=MagicMock())
     assert env._port == 9002
+
+
+def test_action_masks_returns_correct_shape():
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    mask = env.action_masks()
+    assert mask.shape == (16,)
+    assert mask.dtype == np.bool_
+
+
+def test_action_masks_before_reset_returns_all_true():
+    env = MindustryEnv(client=MagicMock())
+    mask = env.action_masks()
+    assert mask.shape == (16,)
+    assert np.all(mask)

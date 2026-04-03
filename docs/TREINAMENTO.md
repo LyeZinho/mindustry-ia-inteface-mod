@@ -1,6 +1,6 @@
 # Guia de Treinamento — Agente RL Mindustry
 
-Este guia explica como configurar o ambiente, iniciar o treinamento do agente A2C e monitorar o progresso.
+Este guia explica como configurar o ambiente, iniciar o treinamento do agente MaskablePPO e monitorar o progresso.
 
 ---
 
@@ -44,7 +44,8 @@ Dependências instaladas:
 
 | Pacote | Função |
 |--------|--------|
-| `stable-baselines3[extra]` | Algoritmo A2C + utilitários |
+| `stable-baselines3[extra]` | Utilitários de RL (VecEnv, Monitor, callbacks) |
+| `sb3-contrib` | Algoritmo MaskablePPO com mascaramento de ações |
 | `gymnasium` | Interface padrão do ambiente |
 | `torch` | Backend de rede neural |
 | `tensorboard` | Visualização de métricas |
@@ -101,8 +102,8 @@ python -m rl.train \
   --timesteps 2000000 \
   --host localhost \
   --port 9000 \
-  --lr 7e-4 \
-  --n-steps 128 \
+  --lr 3e-4 \
+  --n-steps 32 \
   --max-steps 5000 \
   --models-dir rl/models \
   --logs-dir rl/logs
@@ -115,24 +116,25 @@ python -m rl.train \
 | `--timesteps` | `1_000_000` | Total de passos de treinamento |
 | `--host` | `localhost` | IP do servidor Mindustry |
 | `--port` | `9000` | Porta TCP do mod |
-| `--lr` | `7e-4` | Taxa de aprendizado do A2C |
-| `--n-steps` | `128` | Passos por rollout antes de atualizar a política |
+| `--lr` | `3e-4` | Taxa de aprendizado do MaskablePPO |
+| `--n-steps` | `32` | Passos por rollout antes de atualizar a política |
 | `--max-steps` | `5000` | Passos máximos por episódio (truncamento) |
 | `--models-dir` | `rl/models` | Diretório para salvar checkpoints e modelo final |
 | `--logs-dir` | `rl/logs` | Diretório para logs do TensorBoard e Monitor |
 
 ### O que acontece durante o treino
 
-1. O script conecta ao Mindustry via TCP e envia `MSG;RESET` para sinalizar início.
-2. A cada passo, o agente recebe o estado do jogo (grid 31×31 + 43 features globais), escolhe uma ação e recebe a recompensa calculada pela função multi-objetivo.
-3. A cada **10 000 passos**, um checkpoint é salvo automaticamente em `rl/models/mindustry_a2c_<N>_steps.zip`.
-4. Ao final, o modelo completo é salvo em `rl/models/final_model.zip`.
+1. O script conecta ao Mindustry via TCP e envia `RESET;<mapa>` para iniciar um episódio.
+2. A cada passo, o agente recebe o estado do jogo (grid 31×31 + 47 features globais), calcula quais ações são válidas (mascaramento), escolhe uma ação e recebe a recompensa calculada pela função multi-objetivo.
+3. O mascaramento de ações impede que o agente tente construir sem recursos ou reparar sem edifícios — evitando gradiente desperdiçado em ações impossíveis.
+4. A cada **10 000 passos**, um checkpoint é salvo automaticamente em `rl/models/mindustry_ppo_<N>_steps.zip`.
+5. Ao final, o modelo completo é salvo em `rl/models/final_model.zip`.
 
 ### Saída esperada no terminal
 
 ```
-Starting A2C training for 1,000,000 timesteps...
-Using cuda device
+Starting MaskablePPO training for 1,000,000 timesteps (4 envs)...
+Using cpu device
 ---------------------------------
 | rollout/           |          |
 |    ep_len_mean     | 312      |
@@ -169,6 +171,8 @@ Acesse **http://localhost:6006** no navegador.
 | Loss da política | `train/policy_gradient_loss` | Gradiente do ator |
 | Entropia | `train/entropy_loss` | Exploração — deve diminuir gradualmente |
 | Taxa de aprendizado | `train/learning_rate` | Monitorar estabilidade |
+| KL aproximado | `train/approx_kl` | Divergência da política (PPO) |
+| Fração de clip | `train/clip_fraction` | % de passos que ativaram o clipping do PPO |
 
 > **Sinal de progresso saudável:** `rollout/mean_episode_reward` subindo de valores negativos (−0.1 a −0.3 nas primeiras iterações) para próximos de zero ou positivos. Episódios que terminam por truncamento (max_steps atingido) sem o core sendo destruído indicam que o agente aprendeu a sobreviver.
 
@@ -180,8 +184,8 @@ Checkpoints são salvos automaticamente a cada 10 000 passos:
 
 ```
 rl/models/
-├── mindustry_a2c_10000_steps.zip
-├── mindustry_a2c_20000_steps.zip
+├── mindustry_ppo_10000_steps.zip
+├── mindustry_ppo_20000_steps.zip
 ├── ...
 └── final_model.zip
 ```
@@ -189,11 +193,11 @@ rl/models/
 Para retomar treino a partir de um checkpoint (**não implementado no `train.py` atual** — requer adaptação manual):
 
 ```python
-from stable_baselines3 import A2C
+from sb3_contrib import MaskablePPO
 from rl.env.mindustry_env import MindustryEnv
 
 env = MindustryEnv()
-model = A2C.load("rl/models/mindustry_a2c_50000_steps", env=env)
+model = MaskablePPO.load("rl/models/mindustry_ppo_50000_steps", env=env)
 model.learn(total_timesteps=500_000)
 model.save("rl/models/final_model")
 ```
@@ -236,35 +240,58 @@ Mean reward over 3 episodes: 1.014
 
 ---
 
-## 7. Estrutura do Espaço de Ações
+## 7. Espaço de Ações
 
-O agente pode executar 8 tipos de ação em cada passo, com coordenadas `(x, y)` no grid 31×31:
+O agente usa um espaço `MultiDiscrete([7, 9])` — duas dimensões por passo:
+
+- **action_type** (0–6): qual ação executar
+- **arg** (0–8): direção (para MOVE) ou slot 3×3 relativo ao jogador (para BUILD/REPAIR)
 
 | `action_type` | Ação | Comando enviado |
 |--------------|------|-----------------|
-| `0` | Aguardar | `MSG;WAIT` |
-| `1` | Construir torrente (`duo`) | `BUILD;duo;x;y;0` |
-| `2` | Construir muro (`wall`) | `BUILD;wall;x;y;0` |
-| `3` | Construir painel solar (`solar-panel`) | `BUILD;solar-panel;x;y;0` |
-| `4` | Reparar edifício em (x, y) | `REPAIR;x;y` |
-| `5` | Mover unidade amiga para (x, y) | `UNIT_MOVE;<id>;x;y` |
-| `6` | Atacar com unidade amiga em (x, y) | `ATTACK;<id>;x;y` |
-| `7` | Criar unidade (factory em x, y) | `FACTORY;x;y;poly` |
+| `0` | Aguardar | *(nenhum)* |
+| `1` | Mover jogador | `PLAYER_MOVE;<dir>` |
+| `2` | Construir torrente (`duo`) | `PLAYER_BUILD;duo;<slot>` |
+| `3` | Construir muro (`copper-wall`) | `PLAYER_BUILD;copper-wall;<slot>` |
+| `4` | Construir painel solar (`solar-panel`) | `PLAYER_BUILD;solar-panel;<slot>` |
+| `5` | Construir drill (`mechanical-drill`) | `PLAYER_BUILD;mechanical-drill;<slot>` |
+| `6` | Reparar edifício em slot | `REPAIR_SLOT;<slot>` |
+
+### Mascaramento de ações (MaskablePPO)
+
+O agente não pode escolher ações impossíveis. A máscara (shape `(16,)`) é calculada a cada passo:
+
+| Ação mascarada | Condição |
+|----------------|----------|
+| MOVE, BUILD_*, REPAIR | Jogador morto |
+| BUILD_TURRET | Cobre < 6 |
+| BUILD_WALL | Cobre < 6 |
+| BUILD_POWER | Chumbo < 14 ou cobre < 10 |
+| BUILD_DRILL | Cobre < 12 |
+| REPAIR | Nenhum edifício existente |
 
 ---
 
 ## 8. Função de Recompensa
 
 ```
-reward = 0.50 × Δcore_hp
+reward = 0.30 × Δcore_hp
        + 0.20 × wave_survived_bonus   (1.0 se sobreviveu a uma wave)
-       + 0.15 × (Δresources / 500)    (500 ≈ capacidade do core)
-       + 0.15 × friendly_ratio        (unidades amigas / total)
-       − 0.001                        (penalidade de tempo)
+       + 0.20 × player_alive_bonus    (1.0 se jogador vivo)
+       + 0.10 × (Δresources / 500)    (500 ≈ capacidade do core)
+       + 0.08 × drill_bonus           (mineração ativa)
+       + 0.07 × power_balance_bonus   (produção ≥ consumo)
+       + 0.05 × build_efficiency_bonus
+       − 0.002                        (penalidade de tempo)
 
 # Se done=True e core_hp ≤ 0:
-reward −= 1.0                         (penalidade terminal)
+reward −= 1.0                         (penalidade terminal — core destruído)
+
+# Se done=True e player morto (core vivo):
+reward −= 0.5                         (penalidade terminal — jogador morto)
 ```
+
+> O sinal de sobrevivência (`player_alive_bonus = 0.20`) foi aumentado para que o agente aprenda a não morrer antes de aprender a construir defesas.
 
 ---
 
@@ -282,10 +309,9 @@ O mod conectou mas não enviou estado. Possíveis causas:
 - O mod está em modo de erro — verifique o console F1 por exceções Java.
 
 ### `RuntimeError: Lost connection to Mindustry server during step`
-A conexão foi interrompida durante o treino. O treino para imediatamente. Reinicie o Mindustry e retome pelo último checkpoint.
+A conexão foi interrompida durante o treino. O ambiente reinicia automaticamente com backoff exponencial (até 5 tentativas). Se persistir, verifique o servidor Mindustry.
 
 ### Treino muito lento (< 10 FPS)
-- Reduza `--n-steps` para `64` — menos dados por update, mais atualizações por segundo.
 - Use servidor headless em vez do cliente desktop.
 - Aumente o FPS do servidor Mindustry.
 - Se disponível, PyTorch com CUDA acelera significativamente: `pip install torch --index-url https://download.pytorch.org/whl/cu121`

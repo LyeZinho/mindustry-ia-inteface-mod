@@ -4,8 +4,9 @@ import pytest
 from gymnasium import spaces
 from rl.env.spaces import (
     make_obs_space, make_action_space, parse_observation,
+    compute_action_mask, NUM_ACTION_TYPES, NUM_SLOTS,
     BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER, BLOCK_DRILL,
-    NUM_ACTION_TYPES, NUM_SLOTS,
+    _encode_block, BLOCK_IDS,
 )
 
 MINIMAL_STATE = {
@@ -87,3 +88,71 @@ def test_obs_space_contains_parsed_obs():
     obs = parse_observation(MINIMAL_STATE)
     assert obs_space["grid"].contains(obs["grid"])
     assert obs["features"].shape == obs_space["features"].shape
+
+
+def test_encode_block_deterministic():
+    """Known blocks map to unique, stable floats."""
+    seen = set()
+    for name in BLOCK_IDS:
+        val = _encode_block(name)
+        assert 0.0 <= val < 1.0
+        assert val not in seen, f"collision for {name}"
+        seen.add(val)
+
+
+def test_encode_block_unknown_maps_to_last():
+    """Unknown blocks map to the 'unknown' slot."""
+    val = _encode_block("nonexistent-block-xyz")
+    assert 0.0 < val < 1.0
+
+
+# ---- Action masking tests ---- #
+
+def test_action_mask_shape():
+    mask = compute_action_mask(MINIMAL_STATE)
+    assert mask.shape == (NUM_ACTION_TYPES + NUM_SLOTS,)
+    assert mask.dtype == np.bool_
+
+
+def test_action_mask_wait_always_valid():
+    mask = compute_action_mask(MINIMAL_STATE)
+    assert mask[0] is np.bool_(True)
+
+    dead_state = {**MINIMAL_STATE, "player": {"alive": False, "hp": 0.0}}
+    mask_dead = compute_action_mask(dead_state)
+    assert mask_dead[0] is np.bool_(True)
+
+
+def test_action_mask_dead_player_blocks_actions():
+    dead_state = {**MINIMAL_STATE, "player": {"alive": False, "hp": 0.0}}
+    mask = compute_action_mask(dead_state)
+    assert mask[0] == True
+    assert np.all(mask[1:NUM_ACTION_TYPES] == False)
+    assert np.all(mask[NUM_ACTION_TYPES:] == True)
+
+
+def test_action_mask_no_resources_blocks_build():
+    broke_state = {
+        **MINIMAL_STATE,
+        "resources": {"copper": 0, "lead": 0},
+        "buildings": [],
+    }
+    mask = compute_action_mask(broke_state)
+    assert mask[0] == True   # WAIT
+    assert mask[1] == True   # MOVE
+    assert mask[2] == False  # BUILD_TURRET (needs copper >= 6)
+    assert mask[3] == False  # BUILD_WALL (needs copper >= 6)
+    assert mask[4] == False  # BUILD_POWER (needs lead >= 14 and copper >= 10)
+    assert mask[5] == False  # BUILD_DRILL (needs copper >= 12)
+    assert mask[6] == False  # REPAIR (no buildings)
+
+
+def test_action_mask_with_enough_resources():
+    rich_state = {
+        **MINIMAL_STATE,
+        "resources": {"copper": 100, "lead": 100},
+        "buildings": [{"block": "duo", "hp": 0.5}],
+    }
+    mask = compute_action_mask(rich_state)
+    assert np.all(mask[:NUM_ACTION_TYPES] == True)
+    assert np.all(mask[NUM_ACTION_TYPES:] == True)

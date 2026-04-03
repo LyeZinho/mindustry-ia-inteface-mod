@@ -1,14 +1,14 @@
 """
 Multi-objective reward function for the Mindustry RL player agent.
 
-reward = 0.35 * core_hp_delta
+reward = 0.30 * core_hp_delta
        + 0.20 * wave_survived_bonus
-       + 0.15 * resources_delta / 500
-       + 0.10 * drill_bonus          (copper increased >= 5 this step)
-       + 0.08 * power_balance_bonus
-       + 0.07 * build_efficiency_bonus
-       + 0.05 * player_alive_bonus
-       - 0.0005                       (time penalty)
+       + 0.10 * resources_delta / 500
+       + 0.08 * drill_bonus          (copper increased >= 5 this step)
+       + 0.07 * power_balance_bonus
+       + 0.05 * build_efficiency_bonus
+       + 0.20 * player_alive_bonus
+       - 0.002                       (time penalty)
 
 Terminal penalties:
   core destroyed        → -1.0
@@ -59,14 +59,14 @@ def compute_reward(
     player_alive_bonus = 1.0 if (player_alive and not core_destroyed) else 0.0
 
     reward = (
-        0.35 * core_hp_delta
+        0.30 * core_hp_delta
         + 0.20 * wave_survived_bonus
-        + 0.15 * (resources_delta / 500.0)
-        + 0.10 * drill_bonus
-        + 0.08 * power_balance_bonus
-        + 0.07 * build_efficiency_bonus
-        + 0.05 * player_alive_bonus
-        - 0.0005
+        + 0.10 * (resources_delta / 500.0)
+        + 0.08 * drill_bonus
+        + 0.07 * power_balance_bonus
+        + 0.05 * build_efficiency_bonus
+        + 0.20 * player_alive_bonus
+        - 0.002
     )
 
     if done:

@@ -1,5 +1,5 @@
 """
-Training entry point for the Mindustry A2C agent.
+Training entry point for the Mindustry MaskablePPO agent.
 
 Usage:
     python -m rl.train
@@ -17,7 +17,7 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
-from stable_baselines3 import A2C
+from sb3_contrib import MaskablePPO
 
 from rl.env.mindustry_env import MindustryEnv
 from rl.callbacks.training_callbacks import make_callbacks
@@ -43,15 +43,15 @@ def _make_env_factory(host: str, tcp_port: int, max_steps: int, maps) -> Callabl
 
 
 def parse_args(argv=None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Train Mindustry A2C agent")
+    p = argparse.ArgumentParser(description="Train Mindustry MaskablePPO agent")
     p.add_argument("--host", default="localhost")
     p.add_argument("--port", type=int, default=9000)
     p.add_argument("--n-envs", type=int, default=4, dest="n_envs",
                    help="Number of parallel environments (default: 4)")
     p.add_argument("--timesteps", type=int, default=1_000_000)
     p.add_argument("--max-steps", type=int, default=5000, dest="max_steps")
-    p.add_argument("--lr", type=float, default=7e-4)
-    p.add_argument("--n-steps", type=int, default=128, dest="n_steps")
+    p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--n-steps", type=int, default=32, dest="n_steps")
     p.add_argument("--models-dir", default="rl/models")
     p.add_argument("--logs-dir", default="rl/logs")
     p.add_argument(
@@ -142,21 +142,21 @@ def main() -> None:
             ]
             env = VecMonitor(SubprocVecEnv(env_fns), filename=f"{args.logs_dir}/monitor")
 
-        model = A2C(
+        model = MaskablePPO(
             policy="MultiInputPolicy",
             env=env,
             learning_rate=args.lr,
             n_steps=args.n_steps,
-            gamma=0.99,
+            gamma=0.95,
             gae_lambda=0.95,
-            ent_coef=0.01,
+            ent_coef=0.05,
             verbose=1,
             tensorboard_log=args.logs_dir,
         )
 
         callbacks = make_callbacks(save_path=args.models_dir)
 
-        print(f"Starting A2C training for {args.timesteps:,} timesteps ({args.n_envs} envs)...")
+        print(f"Starting MaskablePPO training for {args.timesteps:,} timesteps ({args.n_envs} envs)...")
         model.learn(total_timesteps=args.timesteps, callback=callbacks)
 
         final_path = f"{args.models_dir}/final_model"

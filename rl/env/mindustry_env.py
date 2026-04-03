@@ -27,6 +27,7 @@ _log = logging.getLogger(__name__)
 from rl.env.mimi_client import MimiClient
 from rl.env.spaces import (
     make_obs_space, make_action_space, parse_observation,
+    compute_action_mask, NUM_ACTION_TYPES, NUM_SLOTS,
     BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER, BLOCK_DRILL,
 )
 from rl.rewards.multi_objective import compute_reward
@@ -159,6 +160,12 @@ class MindustryEnv(gym.Env):
         if self._client is not None:
             self._client.close()
             self._client = None
+
+    def action_masks(self) -> np.ndarray:
+        """Return action mask for MaskablePPO. Shape: (16,) = 7 action_types + 9 slots."""
+        if self._prev_state is None:
+            return np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
+        return compute_action_mask(self._prev_state)
 
     def _execute_action(self, action_type: int, arg: int) -> None:
         if action_type == 0:

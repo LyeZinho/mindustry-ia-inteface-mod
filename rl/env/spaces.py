@@ -11,7 +11,7 @@ Action: MultiDiscrete([7, 9])
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from gymnasium import spaces
@@ -36,6 +36,42 @@ BLOCK_TURRET = "duo"
 BLOCK_WALL = "copper-wall"
 BLOCK_POWER = "solar-panel"
 BLOCK_DRILL = "mechanical-drill"
+
+# Deterministic block encoding — no hash collisions
+BLOCK_IDS: dict[str, int] = {
+    "air": 0,
+    "copper-wall": 1,
+    "copper-wall-large": 2,
+    "duo": 3,
+    "scatter": 4,
+    "hail": 5,
+    "lancer": 6,
+    "wave": 7,
+    "swarmer": 8,
+    "mechanical-drill": 9,
+    "pneumatic-drill": 10,
+    "conveyor": 11,
+    "titanium-conveyor": 12,
+    "router": 13,
+    "junction": 14,
+    "overflow-gate": 15,
+    "sorter": 16,
+    "solar-panel": 17,
+    "solar-panel-large": 18,
+    "battery": 19,
+    "battery-large": 20,
+    "power-node": 21,
+    "power-node-large": 22,
+    "thermal-generator": 23,
+    "core-shard": 24,
+    "vault": 25,
+    "container": 26,
+    "mender": 27,
+    "mend-projector": 28,
+    "overdrive-projector": 29,
+    "force-projector": 30,
+}
+_NUM_KNOWN_BLOCKS = len(BLOCK_IDS) + 1  # +1 for "unknown"
 
 # Slot (0-8) → (dx, dy) in tiles, relative to player unit
 # Row-major 3×3: top-left=0, top-center=1, ... bottom-right=8
@@ -76,7 +112,8 @@ def _encode_team(team: str) -> float:
 
 
 def _encode_block(block: str) -> float:
-    return (abs(hash(block)) % 50) / 50.0
+    idx = BLOCK_IDS.get(block, _NUM_KNOWN_BLOCKS - 1)
+    return idx / _NUM_KNOWN_BLOCKS
 
 
 def parse_observation(state: Dict[str, Any]) -> Dict[str, np.ndarray]:
@@ -161,3 +198,51 @@ def _parse_features(state: Dict[str, Any]) -> np.ndarray:
     # else stays 0.0
 
     return feat
+
+
+# ------------------------------------------------------------------ #
+# Action masking (for MaskablePPO)                                     #
+# ------------------------------------------------------------------ #
+
+def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
+    """Return a 1-D boolean mask of length NUM_ACTION_TYPES + NUM_SLOTS (7+9=16).
+
+    First 7 entries: which *action_types* are valid.
+    Next 9 entries:  which *slots/directions* are valid (always True — we don't
+                     mask spatial arguments).
+
+    Masking rules:
+      - WAIT (0) is always valid.
+      - If player is dead → only WAIT is valid (indices 1-6 masked).
+      - BUILD_TURRET (2): needs copper >= 6  (duo cost)
+      - BUILD_WALL (3):   needs copper >= 6  (copper-wall cost)
+      - BUILD_POWER (4):  needs lead >= 14 AND copper >= 10  (solar-panel)
+      - BUILD_DRILL (5):  needs copper >= 12  (mechanical-drill)
+      - REPAIR (6):       needs at least one building
+    """
+    mask = np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
+
+    player = state.get("player", {})
+    if not player.get("alive", False):
+        # Dead: only WAIT valid among action_types
+        mask[1:NUM_ACTION_TYPES] = False
+        return mask
+
+    resources = state.get("resources", {})
+    copper = float(resources.get("copper", 0))
+    lead = float(resources.get("lead", 0))
+
+    if copper < 6:
+        mask[2] = False  # BUILD_TURRET
+    if copper < 6:
+        mask[3] = False  # BUILD_WALL
+    if lead < 14 or copper < 10:
+        mask[4] = False  # BUILD_POWER
+    if copper < 12:
+        mask[5] = False  # BUILD_DRILL
+
+    buildings = state.get("buildings", [])
+    if len(buildings) == 0:
+        mask[6] = False  # REPAIR
+
+    return mask

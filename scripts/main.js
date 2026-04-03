@@ -904,8 +904,8 @@ function handleResetCommand(parts) {
             }
 
             // Set wave spacing to half normal (2× faster waves)
-            Vars.state.rules.waveSpacing = 7200;
-            Log.info("[Mimi Gateway] waveSpacing set to 7200 (2x faster)");
+            Vars.state.rules.waveSpacing = 14400;
+            Log.info("[Mimi Gateway] waveSpacing set to 14400 (normal speed)");
 
             // Spawn player unit (poly) at core position
             Core.app.post(() => {
