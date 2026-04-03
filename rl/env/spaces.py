@@ -127,6 +127,11 @@ def parse_observation(state: Dict[str, Any]) -> Dict[str, np.ndarray]:
 
 
 def _parse_grid(grid: List[Dict[str, Any]]) -> np.ndarray:
+    """
+    Parse sparse grid format (31×31 matrix now empty to reduce JSON size from 50KB to 500B).
+    Sparse features (nearby ores/enemies) are extracted separately in _parse_features.
+    Backward compatible: returns (4, 31, 31) zeros if grid is empty array.
+    """
     arr = np.zeros((4, GRID_SIZE, GRID_SIZE), dtype=np.float32)
     for tile in grid:
         x = int(tile.get("x", 0))
@@ -214,10 +219,10 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
     Masking rules:
       - WAIT (0) is always valid.
       - If player is dead → only WAIT is valid (indices 1-6 masked).
-      - BUILD_TURRET (2): needs copper >= 6  (duo cost)
-      - BUILD_WALL (3):   needs copper >= 6  (copper-wall cost)
-      - BUILD_POWER (4):  needs lead >= 14 AND copper >= 10  (solar-panel)
-      - BUILD_DRILL (5):  needs copper >= 12  (mechanical-drill)
+      - BUILD_TURRET (2): needs copper >= 35  (duo cost)
+      - BUILD_WALL (3):   needs copper >= 6   (copper-wall cost)
+      - BUILD_POWER (4):  needs copper >= 40 AND lead >= 35  (solar-panel)
+      - BUILD_DRILL (5):  needs copper >= 45 AND lead >= 45 AND graphite >= 30  (mechanical-drill)
       - REPAIR (6):       needs at least one building
     """
     mask = np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
@@ -231,15 +236,16 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
     resources = state.get("resources", {})
     copper = float(resources.get("copper", 0))
     lead = float(resources.get("lead", 0))
+    graphite = float(resources.get("graphite", 0))
 
+    if copper < 35:
+        mask[2] = False  # BUILD_TURRET (duo: 35 copper)
     if copper < 6:
-        mask[2] = False  # BUILD_TURRET
-    if copper < 6:
-        mask[3] = False  # BUILD_WALL
-    if lead < 14 or copper < 10:
-        mask[4] = False  # BUILD_POWER
-    if copper < 12:
-        mask[5] = False  # BUILD_DRILL
+        mask[3] = False  # BUILD_WALL (copper-wall: 6 copper)
+    if copper < 40 or lead < 35:
+        mask[4] = False  # BUILD_POWER (solar-panel: 40 copper + 35 lead)
+    if copper < 45 or lead < 45 or graphite < 30:
+        mask[5] = False  # BUILD_DRILL (mechanical-drill: 45 copper + 45 lead + 30 graphite)
 
     buildings = state.get("buildings", [])
     if len(buildings) == 0:
