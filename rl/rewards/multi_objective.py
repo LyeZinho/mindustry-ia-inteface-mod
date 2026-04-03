@@ -103,6 +103,39 @@ def _detect_new_drills(prev_state: Dict[str, Any], curr_state: Dict[str, Any]) -
     return len(curr_drills - prev_drills)
 
 
+def _detect_action_repetition_penalty(
+    action_history: Optional[list[int]],
+    resources_delta: float,
+    min_history_len: int = 3,
+    no_progress_threshold: float = 0.0,
+) -> float:
+    """
+    Penalize excessive repetition of passive actions (WAIT, MOVE) without progress.
+
+    Rationale: Agent should explore different actions. If it repeats WAIT/MOVE
+    for multiple steps AND collects no resources, it's being idle/unproductive.
+
+    Args:
+        action_history: List of last N actions (0=WAIT, 1=MOVE, 2-6=BUILD/REPAIR)
+        resources_delta: Total resources gained this step
+        min_history_len: Minimum consecutive actions to trigger penalty (default: 3)
+        no_progress_threshold: If resources_delta <= this, consider no progress (default: 0)
+
+    Returns:
+        Penalty (negative) or 0.0 if no violation
+    """
+    if action_history is None or len(action_history) < min_history_len:
+        return 0.0
+
+    recent_actions = action_history[-min_history_len:]
+    all_passive = all(a in (0, 1) for a in recent_actions)
+
+    if all_passive and resources_delta <= no_progress_threshold:
+        return -0.05
+
+    return 0.0
+
+
 def compute_reward(
     prev_state: Dict[str, Any],
     curr_state: Dict[str, Any],
@@ -169,6 +202,11 @@ def compute_reward(
 
     delivery_bonus = 1.0 if resources_delta > 0 and inventory_delta == 0 else 0.0
 
+    inactivity_penalty_a = _detect_action_repetition_penalty(
+        action_history=action_history,
+        resources_delta=resources_delta,
+    )
+
     reward = (
         0.30 * core_hp_delta
         + 0.20 * wave_survived_bonus
@@ -181,6 +219,7 @@ def compute_reward(
         + 0.05 * manual_mining_reward
         + 1.00 * delivery_bonus
         - 0.002
+        + inactivity_penalty_a
     )
 
     if done:

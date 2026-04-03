@@ -156,3 +156,56 @@ def test_reward_no_mining_when_inventory_empty():
     r = compute_reward(prev, curr, done=False)
     r_no_delta = compute_reward(prev, prev, done=False)
     assert abs(r - r_no_delta) < 1e-6
+
+
+def test_no_penalty_if_actions_diverse():
+    """Diverse actions (including BUILD) should not trigger penalty."""
+    from rl.rewards.multi_objective import _detect_action_repetition_penalty
+
+    history = [0, 1, 2, 0, 1]  # Mixed: WAIT, MOVE, BUILD_TURRET, ...
+    penalty = _detect_action_repetition_penalty(history, resources_delta=0.0)
+    assert penalty == 0.0
+
+
+def test_penalty_if_repeated_wait_no_progress():
+    """Repeated WAIT with no resource progress = -0.05."""
+    from rl.rewards.multi_objective import _detect_action_repetition_penalty
+
+    history = [0, 0, 0, 0, 0]  # All WAIT
+    penalty = _detect_action_repetition_penalty(history, resources_delta=0.0)
+    assert penalty == -0.05
+
+
+def test_penalty_if_repeated_move_no_progress():
+    """Repeated MOVE with no resource progress = -0.05."""
+    from rl.rewards.multi_objective import _detect_action_repetition_penalty
+
+    history = [1, 1, 1]  # All MOVE (3 is minimum)
+    penalty = _detect_action_repetition_penalty(history, resources_delta=0.0)
+    assert penalty == -0.05
+
+
+def test_no_penalty_if_resources_gained_despite_repetition():
+    """If resources gained, no penalty even with repeated actions."""
+    from rl.rewards.multi_objective import _detect_action_repetition_penalty
+
+    history = [1, 1, 1]  # MOVE MOVE MOVE
+    penalty = _detect_action_repetition_penalty(history, resources_delta=50.0)
+    assert penalty == 0.0
+
+
+def test_no_penalty_if_history_too_short():
+    """History < min_history_len should not trigger penalty."""
+    from rl.rewards.multi_objective import _detect_action_repetition_penalty
+
+    history = [0, 0]  # Only 2 actions
+    penalty = _detect_action_repetition_penalty(history, resources_delta=0.0, min_history_len=3)
+    assert penalty == 0.0
+
+
+def test_no_penalty_if_history_is_none():
+    """None history should return 0 (no penalty)."""
+    from rl.rewards.multi_objective import _detect_action_repetition_penalty
+
+    penalty = _detect_action_repetition_penalty(None, resources_delta=0.0)
+    assert penalty == 0.0
