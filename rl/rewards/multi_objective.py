@@ -185,24 +185,28 @@ def _detect_new_drills(prev_state: Dict[str, Any], curr_state: Dict[str, Any]) -
 
 def _detect_action_repetition_penalty(
     action_history: Optional[list[int]],
-    resources_delta: float,
+    new_buildings: int = 0,
     min_history_len: int = 3,
-    no_progress_threshold: float = 0.0,
 ) -> float:
     """
-    Penalize excessive repetition of passive actions (WAIT, MOVE) without progress.
+    Penalize excessive repetition of passive actions (WAIT, MOVE) without agent progress.
 
-    Rationale: Agent should explore different actions. If it repeats WAIT/MOVE
-    for multiple steps AND collects no resources, it's being idle/unproductive.
+    Rationale: Agent should take productive actions. If it repeats WAIT/MOVE
+    for multiple steps AND placed no buildings this step, it is idle.
+
+    Note: Intentionally decoupled from resources_delta. Passive drill income
+    should NOT excuse idle behavior — otherwise agent learns "build 1 drill,
+    idle forever" as a stable local optimum.
 
     Args:
-        action_history: List of last N actions (0=WAIT, 1=MOVE, 2-6=BUILD/REPAIR)
-        resources_delta: Total resources gained this step
-        min_history_len: Minimum consecutive actions to trigger penalty (default: 3)
-        no_progress_threshold: If resources_delta <= this, consider no progress (default: 0)
+        action_history: List of last N actions (0=WAIT, 1=MOVE, 2-6=BUILD/REPAIR).
+                        Should include the CURRENT action (updated before calling).
+        new_buildings: Number of new buildings placed THIS step (default: 0).
+                       If > 0, the agent made progress and penalty is waived.
+        min_history_len: Minimum consecutive passive actions to trigger (default: 3).
 
     Returns:
-        Penalty (negative) or 0.0 if no violation
+        -0.05 if idle streak detected with no building progress, else 0.0
     """
     if action_history is None or len(action_history) < min_history_len:
         return 0.0
@@ -210,7 +214,7 @@ def _detect_action_repetition_penalty(
     recent_actions = action_history[-min_history_len:]
     all_passive = all(a in (0, 1) for a in recent_actions)
 
-    if all_passive and resources_delta <= no_progress_threshold:
+    if all_passive and new_buildings == 0:
         return -0.05
 
     return 0.0
@@ -318,7 +322,7 @@ def compute_reward(
 
     inactivity_penalty_a = _detect_action_repetition_penalty(
         action_history=action_history,
-        resources_delta=resources_delta,
+        new_buildings=new_buildings,
     )
 
     inactivity_penalty_b = _detect_resource_bleeding_penalty(prev_state, curr_state)

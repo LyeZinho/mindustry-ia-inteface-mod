@@ -163,34 +163,48 @@ def test_no_penalty_if_actions_diverse():
     from rl.rewards.multi_objective import _detect_action_repetition_penalty
 
     history = [0, 1, 2, 0, 1]  # Mixed: WAIT, MOVE, BUILD_TURRET, ...
-    penalty = _detect_action_repetition_penalty(history, resources_delta=0.0)
+    penalty = _detect_action_repetition_penalty(history, new_buildings=0)
     assert penalty == 0.0
 
 
 def test_penalty_if_repeated_wait_no_progress():
-    """Repeated WAIT with no resource progress = -0.05."""
+    """Repeated WAIT with no buildings placed = -0.05."""
     from rl.rewards.multi_objective import _detect_action_repetition_penalty
 
-    history = [0, 0, 0, 0, 0]  # All WAIT
-    penalty = _detect_action_repetition_penalty(history, resources_delta=0.0)
+    history = [0, 0, 0, 0, 0]  # All WAIT, no buildings placed
+    penalty = _detect_action_repetition_penalty(history, new_buildings=0)
     assert penalty == -0.05
 
 
 def test_penalty_if_repeated_move_no_progress():
-    """Repeated MOVE with no resource progress = -0.05."""
+    """Repeated MOVE with no buildings placed = -0.05."""
     from rl.rewards.multi_objective import _detect_action_repetition_penalty
 
-    history = [1, 1, 1]  # All MOVE (3 is minimum)
-    penalty = _detect_action_repetition_penalty(history, resources_delta=0.0)
+    history = [1, 1, 1]  # All MOVE (3 is minimum), no buildings placed
+    penalty = _detect_action_repetition_penalty(history, new_buildings=0)
     assert penalty == -0.05
 
 
-def test_no_penalty_if_resources_gained_despite_repetition():
-    """If resources gained, no penalty even with repeated actions."""
+def test_penalty_fires_despite_passive_income():
+    """Passive drill income does NOT excuse WAIT/MOVE streaks (Bug 2 fix).
+
+    Old behavior: resources_delta=50 blocked penalty.
+    New behavior: only new_buildings > 0 blocks penalty.
+    """
     from rl.rewards.multi_objective import _detect_action_repetition_penalty
 
-    history = [1, 1, 1]  # MOVE MOVE MOVE
-    penalty = _detect_action_repetition_penalty(history, resources_delta=50.0)
+    history = [1, 1, 1]  # MOVE MOVE MOVE — 3 passive actions
+    # new_buildings=0 (default): idle even with passive income from drills
+    penalty = _detect_action_repetition_penalty(history, new_buildings=0)
+    assert penalty == -0.05
+
+
+def test_no_penalty_if_building_placed_during_passive_streak():
+    """Building placed this step excuses a WAIT/MOVE streak."""
+    from rl.rewards.multi_objective import _detect_action_repetition_penalty
+
+    history = [0, 0, 0]  # WAIT WAIT WAIT — but agent just placed something
+    penalty = _detect_action_repetition_penalty(history, new_buildings=1)
     assert penalty == 0.0
 
 
@@ -199,7 +213,7 @@ def test_no_penalty_if_history_too_short():
     from rl.rewards.multi_objective import _detect_action_repetition_penalty
 
     history = [0, 0]  # Only 2 actions
-    penalty = _detect_action_repetition_penalty(history, resources_delta=0.0, min_history_len=3)
+    penalty = _detect_action_repetition_penalty(history, new_buildings=0, min_history_len=3)
     assert penalty == 0.0
 
 
@@ -207,7 +221,7 @@ def test_no_penalty_if_history_is_none():
     """None history should return 0 (no penalty)."""
     from rl.rewards.multi_objective import _detect_action_repetition_penalty
 
-    penalty = _detect_action_repetition_penalty(None, resources_delta=0.0)
+    penalty = _detect_action_repetition_penalty(None, new_buildings=0)
     assert penalty == 0.0
 
 

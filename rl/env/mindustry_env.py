@@ -208,11 +208,13 @@ class MindustryEnv(gym.Env):
     ) -> Tuple[int, int]:
         from rl.rewards.multi_objective import _detect_action_repetition_penalty, _detect_resource_bleeding_penalty
 
-        def _total_resources(state: Dict[str, Any]) -> float:
-            return sum(float(v) for v in state.get("resources", {}).values())
-
-        resources_delta = _total_resources(curr_state) - _total_resources(prev_state)
-        penalty_a = _detect_action_repetition_penalty(self._action_history, resources_delta)
+        new_buildings = max(
+            0,
+            len(curr_state.get("buildings", [])) - len(prev_state.get("buildings", []))
+        )
+        penalty_a = _detect_action_repetition_penalty(
+            self._action_history, new_buildings=new_buildings
+        )
         penalty_b = _detect_resource_bleeding_penalty(prev_state, curr_state)
         return int(penalty_a != 0.0), int(penalty_b != 0.0)
 
