@@ -15,7 +15,9 @@ Base Rewards:
   0.05 * build_efficiency_bonus     (construct efficiently)
   0.20 * player_alive_bonus         (keep player alive)
   0.05 * manual_mining_reward       (manual inventory collection)
-  1.00 * delivery_bonus             (deliver items to core)
+  0.20 * delivery_bonus             (gradual: min(1.0, resources_delta/50); was 1.00*binary)
+  0.10 * drill_on_ore_bonus         (drill placed on ore tile; uses drillsOnOre from mod v1.0.5)
+  0.10 * conveyor_connectivity_bonus (new conveyor adjacent to drill)
   0.05 * time_penalty               (discourage stalling)
 
 Inactivity Penalties (NEW):
@@ -33,17 +35,14 @@ Terminal Penalties:
   action failed         → -0.15
 
 ================================================================================
-CURRICULUM LEARNING (DISABLED BY DEFAULT)
+CURRICULUM LEARNING (ENABLED)
 ================================================================================
 
-Framework ready for phased action masking. Set CURRICULUM_ENABLED=True to activate.
-
-Current phases:
-  Phase 0 (0-50k steps):    WAIT, MOVE, BUILD_DRILL only (mining focus)
-  Phase 1 (50k-150k steps): Add BUILD_POWER (energy generation)
-  Phase 2 (150k+ steps):    All actions (BUILD_TURRET, BUILD_WALL, REPAIR)
-
-To enable: See apply_curriculum_action_mask() documentation.
+4-phase curriculum for 12 actions:
+  Phase 0 (0-50k steps):     WAIT, MOVE, BUILD_DRILL (mining focus)
+  Phase 1 (50k-150k steps):  Add BUILD_CONVEYOR (connect drill output)
+  Phase 2 (150k-300k steps): Add defense + power + processing
+  Phase 3 (300k+ steps):     All 12 actions
 
 ================================================================================
 KEY DESIGN DECISIONS
@@ -81,9 +80,8 @@ from rl.env.spaces import ACTION_REGISTRY, _action_idx
 # Set CURRICULUM_ENABLED = True to restrict agent to specific actions
 # during early training phases. Currently unused; prepared for future.
 
-CURRICULUM_ENABLED = False
+CURRICULUM_ENABLED = True
 
-# Action indices (derived from registry)
 ACTION_WAIT = _action_idx("WAIT")
 ACTION_MOVE = _action_idx("MOVE")
 ACTION_BUILD_TURRET = _action_idx("BUILD_TURRET")
@@ -91,15 +89,25 @@ ACTION_BUILD_WALL = _action_idx("BUILD_WALL")
 ACTION_BUILD_POWER = _action_idx("BUILD_POWER")
 ACTION_BUILD_DRILL = _action_idx("BUILD_DRILL")
 ACTION_REPAIR = _action_idx("REPAIR")
+ACTION_BUILD_CONVEYOR = _action_idx("BUILD_CONVEYOR")
+ACTION_BUILD_GRAPHITE_PRESS = _action_idx("BUILD_GRAPHITE_PRESS")
+ACTION_BUILD_SILICON_SMELTER = _action_idx("BUILD_SILICON_SMELTER")
+ACTION_BUILD_COMBUSTION_GEN = _action_idx("BUILD_COMBUSTION_GEN")
+ACTION_BUILD_PNEUMATIC_DRILL = _action_idx("BUILD_PNEUMATIC_DRILL")
 
-# Phases: (phase_name, timestep_range, allowed_actions)
-# Phase 0: Learn mining only (MOVE + BUILD_DRILL)
-# Phase 1: Add power generation
-# Phase 2: Full actions
 CURRICULUM_PHASES = [
-    ("mining_only", (0, 50000), [ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL]),
-    ("power_gen", (50000, 150000), [ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_POWER]),
-    ("full", (150000, float('inf')), [ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_TURRET, ACTION_BUILD_WALL, ACTION_BUILD_POWER, ACTION_BUILD_DRILL, ACTION_REPAIR]),
+    ("mining_only", (0, 50_000), [
+        ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL,
+    ]),
+    ("drill_connect", (50_000, 150_000), [
+        ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR,
+    ]),
+    ("defense_power", (150_000, 300_000), [
+        ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR,
+        ACTION_BUILD_POWER, ACTION_BUILD_WALL, ACTION_BUILD_TURRET,
+        ACTION_REPAIR, ACTION_BUILD_GRAPHITE_PRESS, ACTION_BUILD_COMBUSTION_GEN,
+    ]),
+    ("full", (300_000, float('inf')), list(range(12))),
 ]
 
 # ------------------------------------------------------------------ #
@@ -256,6 +264,51 @@ def _detect_resource_bleeding_penalty(
     return 0.0
 
 
+def _compute_drill_on_ore_bonus(
+    prev_state: Dict[str, Any],
+    curr_state: Dict[str, Any],
+) -> float:
+    prev_on_ore = int(prev_state.get("drillsOnOre", 0))
+    curr_on_ore = int(curr_state.get("drillsOnOre", 0))
+    new_on_ore = max(0, curr_on_ore - prev_on_ore)
+    return min(1.0, float(new_on_ore))
+
+
+def _compute_conveyor_connectivity_bonus(
+    prev_state: Dict[str, Any],
+    curr_state: Dict[str, Any],
+) -> float:
+    prev_positions = {
+        (b.get("x"), b.get("y"))
+        for b in prev_state.get("buildings", [])
+    }
+    curr_buildings = curr_state.get("buildings", [])
+
+    new_conveyors = [
+        b for b in curr_buildings
+        if "conveyor" in b.get("block", "")
+        and (b.get("x"), b.get("y")) not in prev_positions
+    ]
+    if not new_conveyors:
+        return 0.0
+
+    drill_positions = {
+        (b.get("x"), b.get("y"))
+        for b in curr_buildings
+        if "drill" in b.get("block", "")
+    }
+    if not drill_positions:
+        return 0.0
+
+    for conv in new_conveyors:
+        cx, cy = conv.get("x", 0), conv.get("y", 0)
+        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            if (cx + dx, cy + dy) in drill_positions:
+                return 1.0
+
+    return 0.0
+
+
 def compute_reward(
     prev_state: Dict[str, Any],
     curr_state: Dict[str, Any],
@@ -323,7 +376,10 @@ def compute_reward(
     inventory_delta = _total_inventory(curr_state) - _total_inventory(prev_state)
     manual_mining_reward = max(0.0, inventory_delta * 0.1)
 
-    delivery_bonus = 1.0 if resources_delta > 0 and inventory_delta == 0 else 0.0
+    delivery_bonus = min(1.0, max(0.0, resources_delta / 50.0))
+
+    drill_on_ore_bonus = _compute_drill_on_ore_bonus(prev_state, curr_state)
+    conveyor_connectivity_bonus = _compute_conveyor_connectivity_bonus(prev_state, curr_state)
 
     inactivity_penalty_a = _detect_action_repetition_penalty(
         action_history=action_history,
@@ -342,7 +398,9 @@ def compute_reward(
         + 0.05 * build_efficiency_bonus
         + 0.20 * player_alive_bonus
         + 0.05 * manual_mining_reward
-        + 1.00 * delivery_bonus
+        + 0.20 * delivery_bonus
+        + 0.10 * drill_on_ore_bonus
+        + 0.10 * conveyor_connectivity_bonus
         - 0.002
         + inactivity_penalty_a
         + inactivity_penalty_b
@@ -363,37 +421,22 @@ def compute_reward(
 def apply_curriculum_action_mask(
     timestep: int,
 ) -> list[bool]:
-    """
-    Return action mask based on curriculum phase.
-    
-    When CURRICULUM_ENABLED = True, restricts available actions by training phase.
-    Allows agent to focus on fundamentals (mining) before learning advanced tactics.
-    
-    Args:
-        timestep: Current training timestep
-    
-    Returns:
-        List of 7 bools (one per action type): True=allowed, False=masked
-    
-    Note:
-        Currently unused (CURRICULUM_ENABLED=False). Enable in train.py if needed.
-    """
+    from rl.env.spaces import NUM_ACTION_TYPES
+
     if not CURRICULUM_ENABLED:
-        return [True] * 7  # All actions allowed when disabled
-    
-    # Find which phase we're in
-    current_phase_actions = list(range(7))  # Default: all actions
-    
-    for phase_name, (start, end), actions in CURRICULUM_PHASES:
+        return [True] * NUM_ACTION_TYPES
+
+    current_phase_actions = list(range(NUM_ACTION_TYPES))
+
+    for _phase_name, (start, end), actions in CURRICULUM_PHASES:
         if start <= timestep < end:
             current_phase_actions = actions
             break
-    
-    # Build mask: True if action is in allowed set, False if masked
-    mask = [False] * 7
+
+    mask = [False] * NUM_ACTION_TYPES
     for action_idx in current_phase_actions:
         mask[action_idx] = True
-    
+
     return mask
 
 

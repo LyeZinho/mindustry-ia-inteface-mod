@@ -281,33 +281,36 @@ def test_multiple_resources_totaled():
 
 
 def test_curriculum_disabled_allows_all_actions():
-    """When disabled, curriculum allows all actions."""
-    from rl.rewards.multi_objective import apply_curriculum_action_mask, CURRICULUM_ENABLED
-    
-    mask = apply_curriculum_action_mask(timestep=0)
-    assert mask == [True] * 7  # All allowed when disabled
-    assert CURRICULUM_ENABLED is False
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    import rl.rewards.multi_objective as mo
+    orig = mo.CURRICULUM_ENABLED
+    mo.CURRICULUM_ENABLED = False
+    try:
+        mask = apply_curriculum_action_mask(timestep=0)
+        assert len(mask) == 12
+        assert all(mask)
+    finally:
+        mo.CURRICULUM_ENABLED = orig
 
 
 def test_curriculum_constants_exist():
-    """Curriculum framework constants are defined."""
     from rl.rewards.multi_objective import (
         CURRICULUM_ENABLED, ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL,
         ACTION_BUILD_POWER, ACTION_BUILD_TURRET, ACTION_BUILD_WALL, ACTION_REPAIR,
         CURRICULUM_PHASES
     )
-    
-    # Verify constants exist
+
     assert ACTION_WAIT == 0
     assert ACTION_MOVE == 1
     assert ACTION_BUILD_DRILL == 5
     assert ACTION_REPAIR == 6
-    
-    # Verify phases exist
-    assert len(CURRICULUM_PHASES) == 3
+
+    assert len(CURRICULUM_PHASES) == 4
     assert CURRICULUM_PHASES[0][0] == "mining_only"
-    assert CURRICULUM_PHASES[1][0] == "power_gen"
-    assert CURRICULUM_PHASES[2][0] == "full"
+    assert CURRICULUM_PHASES[1][0] == "drill_connect"
+    assert CURRICULUM_PHASES[2][0] == "defense_power"
+    assert CURRICULUM_PHASES[3][0] == "full"
+    assert CURRICULUM_ENABLED is True
 
 
 def test_full_compute_reward_integration():
@@ -355,3 +358,123 @@ def test_full_compute_reward_integration():
     # - No inactivity penalties (diverse actions)
     assert reward > 0, f"Expected positive reward, got {reward}"
     assert isinstance(reward, float), f"Expected float, got {type(reward)}"
+
+
+def test_delivery_bonus_gradual_small_flow():
+    prev = {"core": {"hp": 1.0}, "wave": 1, "resources": {"copper": 100.0},
+            "power": {}, "buildings": [], "player": {"alive": True}, "inventory": {}}
+    curr = {"core": {"hp": 1.0}, "wave": 1, "resources": {"copper": 110.0},
+            "power": {}, "buildings": [], "player": {"alive": True}, "inventory": {}}
+    r = compute_reward(prev, curr, done=False)
+    assert r > 0.04
+    assert r < 0.30
+
+
+def test_delivery_bonus_gradual_large_flow():
+    prev = {"core": {"hp": 1.0}, "wave": 1, "resources": {"copper": 0.0},
+            "power": {}, "buildings": [], "player": {"alive": True}, "inventory": {}}
+    curr = {"core": {"hp": 1.0}, "wave": 1, "resources": {"copper": 200.0},
+            "power": {}, "buildings": [], "player": {"alive": True}, "inventory": {}}
+    r = compute_reward(prev, curr, done=False)
+    assert r > 0.20
+
+
+def test_drill_on_ore_bonus_when_drill_placed_on_ore():
+    prev = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
+            "power": {}, "buildings": [], "player": {"alive": True},
+            "inventory": {}, "drillsOnOre": 0}
+    curr = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
+            "power": {}, "buildings": [{"block": "mechanical-drill", "x": 5, "y": 5}],
+            "player": {"alive": True}, "inventory": {}, "drillsOnOre": 1}
+    r = compute_reward(prev, curr, done=False)
+    assert r > 0.30
+
+
+def test_drill_on_ore_bonus_not_fired_when_drill_not_on_ore():
+    prev = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
+            "power": {}, "buildings": [], "player": {"alive": True},
+            "inventory": {}, "drillsOnOre": 0}
+    curr = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
+            "power": {}, "buildings": [{"block": "mechanical-drill", "x": 5, "y": 5}],
+            "player": {"alive": True}, "inventory": {}, "drillsOnOre": 0}
+    curr_with_ore = dict(curr); curr_with_ore["drillsOnOre"] = 1
+    r_without = compute_reward(prev, curr, done=False)
+    r_with = compute_reward(prev, curr_with_ore, done=False)
+    assert r_with > r_without
+
+
+def test_conveyor_connectivity_bonus_fires_when_conveyor_adjacent_to_drill():
+    prev_buildings = [{"block": "mechanical-drill", "x": 5, "y": 5, "team": "sharded"}]
+    curr_buildings = [
+        {"block": "mechanical-drill", "x": 5, "y": 5, "team": "sharded"},
+        {"block": "conveyor", "x": 5, "y": 6, "team": "sharded"},
+    ]
+    prev = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
+            "power": {}, "buildings": prev_buildings,
+            "player": {"alive": True}, "inventory": {}, "drillsOnOre": 0}
+    curr = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
+            "power": {}, "buildings": curr_buildings,
+            "player": {"alive": True}, "inventory": {}, "drillsOnOre": 0}
+    r = compute_reward(prev, curr, done=False)
+    assert r > 0.28
+
+
+def test_conveyor_connectivity_bonus_not_fired_for_isolated_conveyor():
+    prev_buildings = [{"block": "mechanical-drill", "x": 5, "y": 5, "team": "sharded"}]
+    curr_buildings = [
+        {"block": "mechanical-drill", "x": 5, "y": 5, "team": "sharded"},
+        {"block": "conveyor", "x": 10, "y": 10, "team": "sharded"},
+    ]
+    prev = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
+            "power": {}, "buildings": prev_buildings,
+            "player": {"alive": True}, "inventory": {}, "drillsOnOre": 0}
+    curr = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
+            "power": {}, "buildings": curr_buildings,
+            "player": {"alive": True}, "inventory": {}, "drillsOnOre": 0}
+    r = compute_reward(prev, curr, done=False)
+    assert r < 0.28
+
+
+def test_curriculum_phase0_allows_only_3_actions():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    mask = apply_curriculum_action_mask(timestep=10000)
+    assert len(mask) == 12
+    assert mask[0] is True
+    assert mask[1] is True
+    assert mask[5] is True
+    assert mask[2] is False
+    assert mask[7] is False
+
+
+def test_curriculum_phase1_adds_conveyor():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    mask = apply_curriculum_action_mask(timestep=75000)
+    assert mask[7] is True
+    assert mask[2] is False
+
+
+def test_curriculum_phase2_adds_defense():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    mask = apply_curriculum_action_mask(timestep=200000)
+    assert mask[2] is True
+    assert mask[4] is True
+    assert mask[9] is False
+
+
+def test_curriculum_phase3_all_actions():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    mask = apply_curriculum_action_mask(timestep=350000)
+    assert all(mask)
+    assert len(mask) == 12
+
+
+def test_curriculum_disabled_returns_all_true():
+    import rl.rewards.multi_objective as mo
+    orig = mo.CURRICULUM_ENABLED
+    mo.CURRICULUM_ENABLED = False
+    try:
+        mask = mo.apply_curriculum_action_mask(timestep=0)
+        assert len(mask) == 12
+        assert all(mask)
+    finally:
+        mo.CURRICULUM_ENABLED = orig
