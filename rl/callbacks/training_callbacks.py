@@ -75,10 +75,12 @@ class LiveMetricsCallback(BaseCallback):
         self._resources_at_rollout_start: Dict[str, float] = {}
         self._rollout_build_fails: int = 0
         self._build_fail_rate_history: List[float] = []
+        self._episode_infos: List[Dict[str, Any]] = []
 
     def _on_rollout_start(self) -> None:
         self._resources_at_rollout_start = dict(self._last_resources)
         self._rollout_build_fails = 0
+        self._episode_infos = []
 
     def _on_step(self) -> bool:
         for info in self.locals.get("infos", []):
@@ -99,6 +101,7 @@ class LiveMetricsCallback(BaseCallback):
                 self._last_unit_count = int(uc)
             if info.get("build_failed", False):
                 self._rollout_build_fails += 1
+            self._episode_infos.append(info)
         return True
 
     def _on_rollout_end(self) -> None:
@@ -111,6 +114,7 @@ class LiveMetricsCallback(BaseCallback):
 
     def _compute_metrics(self) -> Dict[str, Any]:
         policy_data = self._compute_policy_metrics()
+        episode_data = self._compute_episode_metrics()
 
         if self._last_power:
             self._power_history.append({
@@ -132,6 +136,7 @@ class LiveMetricsCallback(BaseCallback):
         return {
             "timestamp": datetime.now().isoformat(),
             "policy": policy_data,
+            "episode_metrics": episode_data,
             "world": {
                 "resources": self._last_resources,
                 "resource_deltas": resource_deltas,
@@ -149,6 +154,39 @@ class LiveMetricsCallback(BaseCallback):
             "training": {
                 "total_timesteps": self.num_timesteps,
             },
+        }
+
+    def _compute_episode_metrics(self) -> Dict[str, Any]:
+        """Aggregate drill, penalty, and action metrics from episode infos."""
+        ACTION_NAMES = ["WAIT", "MOVE", "BUILD_TURRET", "BUILD_WALL", "BUILD_POWER", "BUILD_DRILL", "REPAIR"]
+        num_steps = len(self._episode_infos)
+        
+        drills_built_total = sum(info.get("drills_built_this_step", 0) for info in self._episode_infos)
+        drill_build_frequency_pct = (drills_built_total / num_steps * 100) if num_steps > 0 else 0.0
+        
+        penalty_a_count = sum(1 for info in self._episode_infos if info.get("penalty_a_triggered", False))
+        penalty_b_count = sum(1 for info in self._episode_infos if info.get("penalty_b_triggered", False))
+        penalty_frequency_pct = ((penalty_a_count + penalty_b_count) / num_steps * 100) if num_steps > 0 else 0.0
+        
+        action_counts = [0] * 7
+        for info in self._episode_infos:
+            action_idx = info.get("action_taken_index")
+            if action_idx is not None and 0 <= action_idx < 7:
+                action_counts[action_idx] += 1
+        
+        total_actions = sum(action_counts)
+        if total_actions > 0:
+            action_dist = {name: count / total_actions for name, count in zip(ACTION_NAMES, action_counts)}
+        else:
+            action_dist = {name: 1.0 / 7 for name in ACTION_NAMES}
+        
+        return {
+            "drills_built_total": int(drills_built_total),
+            "drill_build_frequency_pct": float(drill_build_frequency_pct),
+            "penalty_a_count": int(penalty_a_count),
+            "penalty_b_count": int(penalty_b_count),
+            "penalty_frequency_pct": float(penalty_frequency_pct),
+            "action_dist": action_dist,
         }
 
     def _compute_policy_metrics(self) -> Dict[str, Any]:
