@@ -35,6 +35,49 @@ const config = {
 })();
 
 // ============================================================================
+// BLOCK ID ENUMERATION
+// ============================================================================
+// Maps block names to integer IDs for compact state transmission.
+// Must match BLOCK_IDS in rl/env/spaces.py exactly.
+const BLOCK_IDS = {
+    "air": 0,
+    "copper-wall": 1,
+    "copper-wall-large": 2,
+    "duo": 3,
+    "scatter": 4,
+    "hail": 5,
+    "lancer": 6,
+    "wave": 7,
+    "swarmer": 8,
+    "mechanical-drill": 9,
+    "pneumatic-drill": 10,
+    "conveyor": 11,
+    "titanium-conveyor": 12,
+    "router": 13,
+    "junction": 14,
+    "overflow-gate": 15,
+    "sorter": 16,
+    "solar-panel": 17,
+    "solar-panel-large": 18,
+    "battery": 19,
+    "battery-large": 20,
+    "power-node": 21,
+    "power-node-large": 22,
+    "thermal-generator": 23,
+    "core-shard": 24,
+    "vault": 25,
+    "container": 26,
+    "mender": 27,
+    "mend-projector": 28,
+    "overdrive-projector": 29,
+    "force-projector": 30
+};
+
+function getBlockId(blockName) {
+    return BLOCK_IDS[blockName] !== undefined ? BLOCK_IDS[blockName] : 31; // 31 = unknown
+}
+
+// ============================================================================
 // GLOBAL STATE
 // ============================================================================
 let serverSocket = null;
@@ -46,6 +89,8 @@ let tickCounter = 0;
 let coreTileX = 0;
 let coreTileY = 0;
 let playerUnitId = -1;
+let lastActionFailed = false;
+let lastInventoryState = {}; // Track previous inventory for delta computation
 
 // ============================================================================
 // PHASE 2: Socket Server Implementation
@@ -164,14 +209,17 @@ function captureGameState() {
         wave: Vars.state.wave,
         waveTime: Vars.state.wavetime,
         resources: {},
+        inventory: {}, // Track current inventory for mining detection
         power: { produced: 0, consumed: 0, stored: 0, capacity: 0 },
         core: { hp: 0, x: 0, y: 0, size: 0 },
         player: { x: 0, y: 0, alive: false, hp: 0.0 },
         enemies: [],
         friendlyUnits: [],
         buildings: [],
-        grid: []
+        grid: [],
+        actionFailed: lastActionFailed
     };
+    lastActionFailed = false;
     
     try {
         // Use Team enum directly so .data() and Units.nearby() work correctly.
@@ -209,6 +257,11 @@ function captureGameState() {
                         state.player.hp = u.maxHealth > 0 ? Math.floor((u.health / u.maxHealth) * 100) / 100 : 0.0;
                         state.player.alive = true;
                         found = true;
+                        // Capture player unit inventory for mining detection
+                        if (u.item != null) {
+                            let itemName = u.item.name;
+                            state.inventory[itemName] = (state.inventory[itemName] || 0) + u.itemAmount;
+                        }
                     }
                 });
             }
@@ -488,8 +541,48 @@ function handlePlayerBuildCommand(parts) {
     let tile = Vars.world.tile(targetTileX, targetTileY);
     if (tile == null) {
         Log.info("[Mimi Gateway] PLAYER_BUILD: tile inválido (" + targetTileX + "," + targetTileY + ")");
+        lastActionFailed = true;
         return;
     }
+    if (tile.solid() || tile.block().name !== "air") {
+        lastActionFailed = true;
+        Log.info("[Mimi Gateway] PLAYER_BUILD: tile ocupado/sólido em (" + targetTileX + "," + targetTileY + ") bloco=" + tile.block().name);
+        return;
+    }
+
+    let blockCosts = {
+        "duo":               [["copper", 35]],
+        "copper-wall":       [["copper", 6]],
+        "solar-panel":       [["copper", 40], ["lead", 35]],
+        "mechanical-drill":  [["copper", 45], ["lead", 45], ["graphite", 30]]
+    };
+    let costs = blockCosts[blockName];
+    if (costs != null) {
+        let coreData = Team.sharded.data();
+        let core = coreData != null ? coreData.core() : null;
+        if (core == null || core.items == null) {
+            lastActionFailed = true;
+            Log.info("[Mimi Gateway] PLAYER_BUILD: core inacessível para verificar recursos");
+            return;
+        }
+        for (let i = 0; i < costs.length; i++) {
+            let itemName = costs[i][0];
+            let needed = costs[i][1];
+            let item = Vars.content.items().find(it => it.name === itemName);
+            if (item == null || core.items.get(item) < needed) {
+                lastActionFailed = true;
+                Log.info("[Mimi Gateway] PLAYER_BUILD: recursos insuficientes (" + itemName + " necessário=" + needed + ") para " + blockName);
+                return;
+            }
+        }
+        for (let i = 0; i < costs.length; i++) {
+            let itemName = costs[i][0];
+            let needed = costs[i][1];
+            let item = Vars.content.items().find(it => it.name === itemName);
+            core.items.remove(item, needed);
+        }
+    }
+
     try {
         tile.setNet(blockType, Team.sharded, 0);
         Log.info("[Mimi Gateway] PLAYER_BUILD: " + blockName + " em (" + targetTileX + "," + targetTileY + ")");
@@ -903,9 +996,11 @@ function handleResetCommand(parts) {
                 Log.warn("[Mimi Gateway] Could not open game server: " + e);
             }
 
-            // Set wave spacing to half normal (2× faster waves)
-            Vars.state.rules.waveSpacing = 14400;
-            Log.info("[Mimi Gateway] waveSpacing set to 14400 (normal speed)");
+            // Enable waves and set fast timers so enemies spawn quickly during training
+            Vars.state.rules.waves = true;
+            Vars.state.rules.waveSpacing = 1800; // 30 seconds between waves
+            Vars.state.wavetime = 60; // first wave in 1 game second
+            Log.info("[Mimi Gateway] waves enabled, waveSpacing=1800, wavetime=60");
 
             // Spawn player unit (poly) at core position
             Core.app.post(() => {
