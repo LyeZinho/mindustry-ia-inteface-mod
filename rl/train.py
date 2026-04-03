@@ -12,28 +12,14 @@ Requires:
 from __future__ import annotations
 
 import argparse
+import signal
 import shutil
-import socket
-import time
 from pathlib import Path
-from typing import Optional
 
 from stable_baselines3 import A2C
-from stable_baselines3.common.monitor import Monitor
 
 from rl.env.mindustry_env import MindustryEnv
 from rl.callbacks.training_callbacks import make_callbacks
-
-
-def _wait_for_port(host: str, port: int, timeout: float = 60.0) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=1.0):
-                return
-        except OSError:
-            time.sleep(0.5)
-    raise TimeoutError(f"Mod TCP port {port} not available after {timeout:.0f}s")
 
 
 def _install_mod(mod_zip: str, server_data_dir: str) -> None:
@@ -47,10 +33,20 @@ def _install_mod(mod_zip: str, server_data_dir: str) -> None:
     print(f"Mod installed: {dest}")
 
 
-def parse_args() -> argparse.Namespace:
+def _make_env_factory(host: str, tcp_port: int, max_steps: int, maps):
+    """Return a zero-arg callable that constructs one MindustryEnv (for SubprocVecEnv)."""
+    def _factory():
+        from rl.env.mindustry_env import MindustryEnv
+        return MindustryEnv(host=host, tcp_port=tcp_port, max_steps=max_steps, maps=maps)
+    return _factory
+
+
+def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train Mindustry A2C agent")
     p.add_argument("--host", default="localhost")
     p.add_argument("--port", type=int, default=9000)
+    p.add_argument("--n-envs", type=int, default=4, dest="n_envs",
+                   help="Number of parallel environments (default: 4)")
     p.add_argument("--timesteps", type=int, default=1_000_000)
     p.add_argument("--max-steps", type=int, default=5000, dest="max_steps")
     p.add_argument("--lr", type=float, default=7e-4)
@@ -86,7 +82,7 @@ def parse_args() -> argparse.Namespace:
         dest="mod_zip",
         help="Path to the Mimi Gateway mod zip to install",
     )
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
 def main() -> None:
@@ -97,22 +93,55 @@ def main() -> None:
 
     maps = [m.strip() for m in args.maps.split(",")] if args.maps else None
 
-    server: Optional["MindustryServer"] = None
+    servers = []
+
+    def _shutdown():
+        for srv in servers:
+            try:
+                srv.stop()
+            except Exception:
+                pass
+
+    def _on_sigterm(signum, frame):
+        print("\nStopping servers (SIGTERM)...")
+        _shutdown()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _on_sigterm)
+
     if not args.no_server:
-        _install_mod(args.mod_zip, args.server_data_dir)
-        from rl.server.manager import MindustryServer
-        server = MindustryServer(jar_path=args.server_jar, data_dir=args.server_data_dir)
-        print(f"Starting Mindustry server ({args.server_jar})...")
-        server.start()
-        print("Waiting for mod TCP port...")
-        _wait_for_port(args.host, args.port)
-        print("Server ready. Connecting agent...")
+        from rl.server.manager import start_n_servers
+        print(f"Starting {args.n_envs} Mindustry server instance(s)...")
+        servers = start_n_servers(
+            n=args.n_envs,
+            base_tcp_port=args.port,
+            base_data_dir=args.server_data_dir,
+            jar_path=args.server_jar,
+            mod_zip=args.mod_zip,
+        )
+        for i in range(args.n_envs):
+            servers[i].send_stdin("host")
+        print(f"All servers ready. Observe at localhost:6567 (instance 0)")
 
     try:
-        env = Monitor(
-            MindustryEnv(host=args.host, port=args.port, max_steps=args.max_steps, maps=maps),
-            filename=f"{args.logs_dir}/monitor",
-        )
+        if args.n_envs == 1:
+            from stable_baselines3.common.monitor import Monitor
+            env = Monitor(
+                MindustryEnv(host=args.host, tcp_port=args.port, max_steps=args.max_steps, maps=maps),
+                filename=f"{args.logs_dir}/monitor",
+            )
+        else:
+            from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
+            env_fns = [
+                _make_env_factory(
+                    host=args.host,
+                    tcp_port=args.port + i,
+                    max_steps=args.max_steps,
+                    maps=maps,
+                )
+                for i in range(args.n_envs)
+            ]
+            env = VecMonitor(SubprocVecEnv(env_fns), filename=f"{args.logs_dir}/monitor")
 
         model = A2C(
             policy="MultiInputPolicy",
@@ -128,7 +157,7 @@ def main() -> None:
 
         callbacks = make_callbacks(save_path=args.models_dir)
 
-        print(f"Starting A2C training for {args.timesteps:,} timesteps...")
+        print(f"Starting A2C training for {args.timesteps:,} timesteps ({args.n_envs} envs)...")
         model.learn(total_timesteps=args.timesteps, callback=callbacks)
 
         final_path = f"{args.models_dir}/final_model"
@@ -136,9 +165,7 @@ def main() -> None:
         print(f"Training complete. Model saved to {final_path}.zip")
 
     finally:
-        if server is not None:
-            print("Stopping server...")
-            server.stop()
+        _shutdown()
 
 
 if __name__ == "__main__":
