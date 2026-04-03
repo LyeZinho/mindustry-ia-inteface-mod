@@ -69,3 +69,131 @@ def test_load_live_metrics_returns_empty_on_invalid_json(tmp_path):
     p.write_text("not valid json {{{{")
     data = load_live_metrics(p)
     assert data == {}
+
+
+# TDD: NEW TESTS FOR 6 DRAWING FUNCTIONS (RED PHASE)
+
+from rl.dashboard import (
+    _draw_drill_rate_total,
+    _draw_drill_rate_frequency,
+    _draw_penalty_counts,
+    _draw_penalty_frequency,
+    _draw_action_dist_per_episode,
+    _draw_action_dist_rolling,
+)
+import matplotlib.pyplot as plt
+
+
+def test_draw_drill_rate_total_renders_with_valid_metrics():
+    """Test _draw_drill_rate_total renders without error with valid episode metrics."""
+    metrics = [
+        {"episode_metrics": {"drills_built_total": 5}},
+        {"episode_metrics": {"drills_built_total": 8}},
+        {"episode_metrics": {"drills_built_total": 12}},
+    ]
+    ax = plt.subplot(1, 1, 1)
+    _draw_drill_rate_total(ax, metrics)
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_draw_drill_rate_frequency_renders_with_valid_metrics():
+    """Test _draw_drill_rate_frequency renders without error with valid episode metrics."""
+    metrics = [
+        {"episode_metrics": {"drill_build_frequency_pct": 5.5}},
+        {"episode_metrics": {"drill_build_frequency_pct": 8.2}},
+        {"episode_metrics": {"drill_build_frequency_pct": 12.1}},
+    ]
+    ax = plt.subplot(1, 1, 1)
+    _draw_drill_rate_frequency(ax, metrics)
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_draw_penalty_counts_renders_with_valid_metrics():
+    """Test _draw_penalty_counts renders without error with valid episode metrics."""
+    metrics = [
+        {"episode_metrics": {"penalty_a_count": 3, "penalty_b_count": 2}},
+        {"episode_metrics": {"penalty_a_count": 1, "penalty_b_count": 5}},
+    ]
+    ax = plt.subplot(1, 1, 1)
+    _draw_penalty_counts(ax, metrics)
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_draw_penalty_frequency_renders_with_valid_metrics():
+    """Test _draw_penalty_frequency renders without error with valid episode metrics."""
+    metrics = [
+        {"episode_metrics": {"penalty_frequency_pct": 2.5}},
+        {"episode_metrics": {"penalty_frequency_pct": 3.8}},
+        {"episode_metrics": {"penalty_frequency_pct": 1.2}},
+    ]
+    ax = plt.subplot(1, 1, 1)
+    _draw_penalty_frequency(ax, metrics)
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_draw_action_dist_per_episode_renders_with_valid_metrics():
+    """Test _draw_action_dist_per_episode renders without error with valid episode metrics."""
+    metrics = [
+        {"episode_metrics": {"action_dist": {
+            "WAIT": 0.1, "MOVE": 0.2, "BUILD_TURRET": 0.15,
+            "BUILD_WALL": 0.15, "BUILD_POWER": 0.2, "BUILD_DRILL": 0.15, "REPAIR": 0.05
+        }}},
+    ]
+    ax = plt.subplot(1, 1, 1)
+    _draw_action_dist_per_episode(ax, metrics)
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_draw_action_dist_rolling_renders_with_valid_metrics():
+    """Test _draw_action_dist_rolling renders without error with valid episode metrics."""
+    metrics = [
+        {"episode_metrics": {"action_dist": {
+            "WAIT": 0.1, "MOVE": 0.2, "BUILD_TURRET": 0.15,
+            "BUILD_WALL": 0.15, "BUILD_POWER": 0.2, "BUILD_DRILL": 0.15, "REPAIR": 0.05
+        }}} for _ in range(10)
+    ]
+    ax = plt.subplot(1, 1, 1)
+    _draw_action_dist_rolling(ax, metrics)
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_draw_drill_rate_total_handles_empty_metrics():
+    """Test _draw_drill_rate_total handles empty metrics gracefully."""
+    ax = plt.subplot(1, 1, 1)
+    _draw_drill_rate_total(ax, [])
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_draw_penalty_counts_handles_empty_metrics():
+    """Test _draw_penalty_counts handles empty metrics gracefully."""
+    ax = plt.subplot(1, 1, 1)
+    _draw_penalty_counts(ax, [])
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_existing_draw_reward_still_works():
+    """Regression test: existing _draw_reward function still works."""
+    from rl.dashboard import _draw_reward
+    df = pd.DataFrame({"r": [1.0, 2.0, 3.0, 4.0, 5.0], "l": [10, 20, 30, 40, 50], "t": range(5)})
+    ax = plt.subplot(1, 1, 1)
+    _draw_reward(ax, df, window=2)
+    assert ax.get_title() != ""
+    plt.close("all")
+
+
+def test_existing_draw_length_still_works():
+    """Regression test: existing _draw_length function still works."""
+    from rl.dashboard import _draw_length
+    df = pd.DataFrame({"r": [1.0, 2.0, 3.0, 4.0, 5.0], "l": [10, 20, 30, 40, 50], "t": range(5)})
+    ax = plt.subplot(1, 1, 1)
+    _draw_length(ax, df, window=2)
+    assert ax.get_title() != ""
+    plt.close("all")

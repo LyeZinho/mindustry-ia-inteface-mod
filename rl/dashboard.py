@@ -85,15 +85,15 @@ def _style_ax(ax, title: str, xlabel: str = "") -> None:
 
 
 def build_figure():
-    fig = plt.figure(figsize=(17, 14), facecolor=_PALETTE["bg_fig"])
+    fig = plt.figure(figsize=(17, 18), facecolor=_PALETTE["bg_fig"])
     fig.canvas.manager.set_window_title("Mindustry RL — Training Dashboard")
 
     gs = gridspec.GridSpec(
-        5, 3,
+        7, 3,
         figure=fig,
         hspace=0.55,
         wspace=0.38,
-        height_ratios=[2.5, 2.0, 2.0, 1.8, 0.7],
+        height_ratios=[2.5, 2.0, 2.0, 1.8, 1.8, 1.8, 0.7],
     )
 
     ax_reward   = fig.add_subplot(gs[0, 0])
@@ -111,7 +111,15 @@ def build_figure():
     ax_resources = fig.add_subplot(gs[3, :2])
     ax_stability = fig.add_subplot(gs[3, 2])
 
-    ax_stats    = fig.add_subplot(gs[4, :])
+    ax_drill_rate_total = fig.add_subplot(gs[4, 0])
+    ax_drill_freq = fig.add_subplot(gs[4, 1])
+    ax_penalty_counts = fig.add_subplot(gs[4, 2])
+
+    ax_penalty_freq = fig.add_subplot(gs[5, 0])
+    ax_action_dist_ep = fig.add_subplot(gs[5, 1])
+    ax_action_dist_roll = fig.add_subplot(gs[5, 2])
+
+    ax_stats    = fig.add_subplot(gs[6, :])
     ax_stats.axis("off")
 
     axes = {
@@ -126,6 +134,12 @@ def build_figure():
         "counts":    ax_counts,
         "resources": ax_resources,
         "stability": ax_stability,
+        "drill_rate_total": ax_drill_rate_total,
+        "drill_freq": ax_drill_freq,
+        "penalty_counts": ax_penalty_counts,
+        "penalty_freq": ax_penalty_freq,
+        "action_dist_ep": ax_action_dist_ep,
+        "action_dist_roll": ax_action_dist_roll,
         "stats":     ax_stats,
     }
     return fig, axes
@@ -176,6 +190,28 @@ def make_updater(axes, csv_path: str, metrics_path: str, window: int):
             _waiting(axes["latency"], "Step Latency + Jitter (ms)")
             _waiting(axes["counts"], "Buildings / Units")
             _waiting(axes["resources"], "Resource Throughput")
+
+        episode_metrics = metrics.get("episode_metrics", {})
+        if episode_metrics:
+            episode_metrics_list = _state.get("episode_metrics_history", [])
+            episode_metrics_list.append(episode_metrics)
+            if len(episode_metrics_list) > 200:
+                episode_metrics_list = episode_metrics_list[-200:]
+            _state["episode_metrics_history"] = episode_metrics_list
+            
+            _draw_drill_rate_total(axes["drill_rate_total"], episode_metrics_list)
+            _draw_drill_rate_frequency(axes["drill_freq"], episode_metrics_list)
+            _draw_penalty_counts(axes["penalty_counts"], episode_metrics_list)
+            _draw_penalty_frequency(axes["penalty_freq"], episode_metrics_list)
+            _draw_action_dist_per_episode(axes["action_dist_ep"], episode_metrics_list)
+            _draw_action_dist_rolling(axes["action_dist_roll"], episode_metrics_list)
+        else:
+            _waiting(axes["drill_rate_total"], "Drills Built (Total)")
+            _waiting(axes["drill_freq"], "Drill Build Frequency (%)")
+            _waiting(axes["penalty_counts"], "Penalty Counts")
+            _waiting(axes["penalty_freq"], "Penalty Frequency (%)")
+            _waiting(axes["action_dist_ep"], "Action Distribution (Latest)")
+            _waiting(axes["action_dist_roll"], "Action Distribution (Rolling)")
 
         _draw_stats(axes["stats"], stats, metrics, window)
 
@@ -366,6 +402,171 @@ def _draw_stats(ax, stats: Dict[str, Any], metrics: Dict[str, Any], window: int)
     )
     ax.text(0.5, 0.5, txt, transform=ax.transAxes, ha="center", va="center",
             fontsize=9, color=_PALETTE["text"], fontfamily="monospace")
+
+
+def _draw_drill_rate_total(ax, metrics: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Drills Built (Total)", "Episódio")
+    if not metrics:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    
+    data = []
+    for m in metrics:
+        ep_data = m.get("episode_metrics", {})
+        drills = ep_data.get("drills_built_total", 0)
+        data.append(drills)
+    
+    if data:
+        xs = list(range(len(data)))
+        ax.plot(xs, data, color=_PALETTE["green"], linewidth=1.5, marker="o", markersize=3)
+        ax.fill_between(xs, data, alpha=0.15, color=_PALETTE["green"])
+
+
+def _draw_drill_rate_frequency(ax, metrics: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Drill Build Frequency (%)", "Episódio")
+    if not metrics:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    
+    data = []
+    for m in metrics:
+        ep_data = m.get("episode_metrics", {})
+        freq = ep_data.get("drill_build_frequency_pct", 0.0)
+        data.append(freq)
+    
+    if data:
+        xs = list(range(len(data)))
+        ax.plot(xs, data, color=_PALETTE["teal"], linewidth=1.5, marker="o", markersize=3)
+        ax.fill_between(xs, data, alpha=0.15, color=_PALETTE["teal"])
+        ax.set_ylim(0, max(100, max(data) * 1.1) if data else 100)
+
+
+def _draw_penalty_counts(ax, metrics: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Penalty Counts (Last 20 Episodes)", "")
+    if not metrics:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    
+    penalty_a_list = []
+    penalty_b_list = []
+    
+    for m in metrics[-20:]:
+        ep_data = m.get("episode_metrics", {})
+        penalty_a_list.append(ep_data.get("penalty_a_count", 0))
+        penalty_b_list.append(ep_data.get("penalty_b_count", 0))
+    
+    if penalty_a_list:
+        xs = list(range(len(penalty_a_list)))
+        width = 0.35
+        ax.bar([x - width/2 for x in xs], penalty_a_list, width=width, 
+               label="Penalty A", color=_PALETTE["red"], alpha=0.8)
+        ax.bar([x + width/2 for x in xs], penalty_b_list, width=width,
+               label="Penalty B", color=_PALETTE["yellow"], alpha=0.8)
+        ax.legend(fontsize=7, labelcolor=_PALETTE["text"], facecolor=_PALETTE["bg_fig"])
+        ax.set_xticks([])
+
+
+def _draw_penalty_frequency(ax, metrics: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Penalty Frequency (% of Steps)", "Episódio")
+    if not metrics:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    
+    data = []
+    for m in metrics:
+        ep_data = m.get("episode_metrics", {})
+        freq = ep_data.get("penalty_frequency_pct", 0.0)
+        data.append(freq)
+    
+    if data:
+        xs = list(range(len(data)))
+        color = _PALETTE["red"] if (data[-1] > 20) else _PALETTE["yellow"] if (data[-1] > 10) else _PALETTE["green"]
+        ax.plot(xs, data, color=color, linewidth=1.5, marker="o", markersize=3)
+        ax.fill_between(xs, data, alpha=0.15, color=color)
+        ax.set_ylim(0, max(50, max(data) * 1.1) if data else 50)
+
+
+def _draw_action_dist_per_episode(ax, metrics: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Action Distribution (Latest Episode)")
+    if not metrics:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    
+    latest = metrics[-1].get("episode_metrics", {})
+    action_dist = latest.get("action_dist", {})
+    
+    if not action_dist:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    
+    labels = list(action_dist.keys())
+    values = list(action_dist.values())
+    colors = [_PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"],
+              _PALETTE["yellow"], _PALETTE["peach"], _PALETTE["green"], _PALETTE["purple"]]
+    
+    xs = list(range(len(labels)))
+    ax.bar(xs, values, color=colors[:len(labels)], edgecolor=_PALETTE["bg_fig"], width=0.7)
+    ax.set_xticks(xs)
+    ax.set_xticklabels([label[:8] for label in labels], fontsize=6, rotation=45, ha="right")
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+
+
+def _draw_action_dist_rolling(ax, metrics: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Action Distribution (Rolling 100ep Avg)")
+    if not metrics or len(metrics) < 2:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    
+    window = 100
+    window_metrics = metrics[-window:] if len(metrics) >= window else metrics
+    
+    if len(window_metrics) < 2:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    
+    action_counts = {}
+    for m in window_metrics:
+        action_dist = m.get("episode_metrics", {}).get("action_dist", {})
+        for action, pct in action_dist.items():
+            if action not in action_counts:
+                action_counts[action] = 0
+            action_counts[action] += pct
+    
+    if not action_counts:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    
+    num_episodes = len(window_metrics)
+    for action in action_counts:
+        action_counts[action] /= num_episodes
+    
+    labels = list(action_counts.keys())
+    values = list(action_counts.values())
+    colors = [_PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"],
+              _PALETTE["yellow"], _PALETTE["peach"], _PALETTE["green"], _PALETTE["purple"]]
+    
+    xs = list(range(len(labels)))
+    ax.bar(xs, values, color=colors[:len(labels)], edgecolor=_PALETTE["bg_fig"], width=0.7)
+    ax.set_xticks(xs)
+    ax.set_xticklabels([label[:8] for label in labels], fontsize=6, rotation=45, ha="right")
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
 
 
 def parse_args() -> argparse.Namespace:
