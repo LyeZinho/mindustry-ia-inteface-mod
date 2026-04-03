@@ -1,20 +1,73 @@
 """
 Multi-objective reward function for the Mindustry RL player agent.
 
-reward = 0.30 * core_hp_delta
-       + 0.20 * wave_survived_bonus
-       + 0.10 * resources_delta / 500
-       + 0.08 * drill_bonus          (continuous: copper_delta / 10.0, clamped [0,1])
-       + 0.07 * power_balance_bonus
-       + 0.05 * build_efficiency_bonus
-       + 0.20 * player_alive_bonus
-       + 0.05 * manual_mining_reward (mining delta > 0)
-       + 1.00 * delivery_bonus       (items delivered to core)
-       - 0.002                       (time penalty)
+================================================================================
+REWARD COMPOSITION (Total Weight: ~2.88)
+================================================================================
 
-Terminal penalties:
+Base Rewards:
+  0.30 * core_hp_delta              (defend core from damage)
+  0.20 * wave_survived_bonus        (survive wave transitions)
+  0.10 * resources_delta / 500      (collect resources passively)
+  0.05 * drill_bonus                (passive copper from mining)
+  0.15 * drill_construction_bonus   (ACTIVE: build new drills - instantaneous!)
+  0.07 * power_balance_bonus        (maintain power generation)
+  0.05 * build_efficiency_bonus     (construct efficiently)
+  0.20 * player_alive_bonus         (keep player alive)
+  0.05 * manual_mining_reward       (manual inventory collection)
+  1.00 * delivery_bonus             (deliver items to core)
+  0.05 * time_penalty               (discourage stalling)
+
+Inactivity Penalties (NEW):
+  Scenario A: -0.05
+    Condition: Last 3+ actions are WAIT(0) or MOVE(1) AND no resource progress
+    Rationale: Penalize excessive passive action repetition without collecting resources
+
+  Scenario B: -0.10
+    Condition: New buildings constructed BUT resources dropped >10 units
+    Rationale: Penalize wasteful builds (expensive structures without income)
+
+Terminal Penalties:
   core destroyed        → -0.4
   player dead, core ok  → -0.5
+  action failed         → -0.15
+
+================================================================================
+CURRICULUM LEARNING (DISABLED BY DEFAULT)
+================================================================================
+
+Framework ready for phased action masking. Set CURRICULUM_ENABLED=True to activate.
+
+Current phases:
+  Phase 0 (0-50k steps):    WAIT, MOVE, BUILD_DRILL only (mining focus)
+  Phase 1 (50k-150k steps): Add BUILD_POWER (energy generation)
+  Phase 2 (150k+ steps):    All actions (BUILD_TURRET, BUILD_WALL, REPAIR)
+
+To enable: See apply_curriculum_action_mask() documentation.
+
+================================================================================
+KEY DESIGN DECISIONS
+================================================================================
+
+1. Instantaneous Drill Bonus (+0.15):
+   - Agent receives reward immediately when building a drill
+   - Complements passive mining reward (copper collection)
+   - Incentivizes action, not just outcome
+
+2. Smart Inactivity Detection:
+   - Scenario A penalizes idle patterns but allows resource-generating builds
+   - Scenario B prevents wasteful construction
+   - Allows strategic movement (e.g., setting up long conveyor chains)
+
+3. Action History Tracking:
+   - Ring buffer of last 10 actions enables inactivity detection
+   - Resets on episode boundaries
+   - Optional parameter for backward compatibility
+
+4. Backward Compatibility:
+   - All new parameters are Optional
+   - Tests verify old code paths still work
+   - Disabled curriculum learning has zero impact on training
 """
 from __future__ import annotations
 

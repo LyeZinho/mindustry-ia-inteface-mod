@@ -294,3 +294,50 @@ def test_curriculum_constants_exist():
     assert CURRICULUM_PHASES[0][0] == "mining_only"
     assert CURRICULUM_PHASES[1][0] == "power_gen"
     assert CURRICULUM_PHASES[2][0] == "full"
+
+
+def test_full_compute_reward_integration():
+    """Integration test: compute_reward with all new features."""
+    from rl.rewards.multi_objective import compute_reward
+    
+    # Minimal state for testing - with a new drill and action history
+    prev_state = {
+        "core": {"hp": 1.0},
+        "wave": 1,
+        "resources": {"copper": 100, "lead": 50},
+        "power": {"produced": 100, "consumed": 50},
+        "buildings": [{"block": "wall", "x": 0, "y": 0}],
+        "player": {"alive": True},
+        "inventory": {},
+        "actionFailed": False,
+    }
+    
+    curr_state = {
+        "core": {"hp": 1.0},
+        "wave": 1,
+        "resources": {"copper": 150, "lead": 50},  # +50 copper
+        "power": {"produced": 100, "consumed": 50},
+        "buildings": [
+            {"block": "wall", "x": 0, "y": 0},
+            {"block": "drill", "x": 5, "y": 5},  # New drill!
+        ],
+        "player": {"alive": True},
+        "inventory": {},
+        "actionFailed": False,
+    }
+    
+    # Test with diverse action history (MOVE + BUILD_DRILL)
+    reward = compute_reward(
+        prev_state=prev_state,
+        curr_state=curr_state,
+        done=False,
+        action_taken=5,  # BUILD_DRILL
+        action_history=[1, 1, 5],  # MOVE, MOVE, BUILD_DRILL
+    )
+    
+    # Should be positive:
+    # - Drill construction bonus: +0.15
+    # - Copper collected: +0.05 * (50/10) clamped to 1.0 = +0.05
+    # - No inactivity penalties (diverse actions)
+    assert reward > 0, f"Expected positive reward, got {reward}"
+    assert isinstance(reward, float), f"Expected float, got {type(reward)}"
