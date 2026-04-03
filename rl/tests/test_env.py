@@ -208,3 +208,20 @@ def test_action_masks_before_reset_returns_all_true():
     mask = env.action_masks()
     assert mask.shape == (16,)
     assert np.all(mask)
+
+
+def test_step_info_contains_game_state_keys():
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    _, _, _, _, info = env.step(np.array([0, 0], dtype=np.int64))
+    assert "step_latency_ms" in info
+    assert "resources" in info
+    assert "power" in info
+    assert "buildings" in info
+    assert "units" in info
+    assert isinstance(info["step_latency_ms"], float)
+    assert info["step_latency_ms"] >= 0.0
+    assert isinstance(info["resources"], dict)
+    assert isinstance(info["buildings"], int)
+    assert isinstance(info["units"], int)

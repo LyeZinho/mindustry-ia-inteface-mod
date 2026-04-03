@@ -47,3 +47,25 @@ def test_compute_stats_empty():
     stats = compute_stats(df, window=50)
     assert stats["total_episodes"] == 0
     assert stats["mean_reward"] == 0.0
+
+
+from rl.dashboard import load_live_metrics
+
+def test_load_live_metrics_returns_dict_from_json(tmp_path):
+    p = tmp_path / "live_metrics.json"
+    p.write_text('{"policy": {"value_mean": 1.5}, "training": {"total_timesteps": 500}}')
+    data = load_live_metrics(p)
+    assert data["policy"]["value_mean"] == 1.5
+    assert data["training"]["total_timesteps"] == 500
+
+
+def test_load_live_metrics_returns_empty_on_missing(tmp_path):
+    data = load_live_metrics(tmp_path / "nonexistent.json")
+    assert data == {}
+
+
+def test_load_live_metrics_returns_empty_on_invalid_json(tmp_path):
+    p = tmp_path / "bad.json"
+    p.write_text("not valid json {{{{")
+    data = load_live_metrics(p)
+    assert data == {}

@@ -178,6 +178,73 @@ Acesse **http://localhost:6006** no navegador.
 
 ---
 
+## 4b. Dashboard Visual em Tempo Real
+
+O dashboard é uma janela matplotlib com **10 painéis** atualizada a cada 3 s. Não depende do treinamento estar rodando — pode ser aberto antes ou depois.
+
+```bash
+# Inicia o dashboard (lê monitor.monitor.csv + live_metrics.json)
+python -m rl.dashboard
+
+# Personalizar caminhos ou intervalo de atualização
+python -m rl.dashboard \
+  --csv rl/logs/monitor.monitor.csv \
+  --metrics rl/logs/live_metrics.json \
+  --interval 3.0 \
+  --window 50
+```
+
+### Painéis
+
+| Painel | Fonte | Descrição |
+|--------|-------|-----------|
+| Reward por episódio | CSV | Scatter + média móvel |
+| Episode Length | CSV | Comprimento médio (rolling) |
+| Distribuição de Rewards | CSV | Histograma |
+| Distribuição de Ações | `live_metrics.json` | Frequência relativa por tipo (7 barras) |
+| Value Estimate | `live_metrics.json` | Histórico do valor médio do rollout |
+| Ações Bloqueadas | `live_metrics.json` | % de ações mascaradas (barra horizontal) |
+| Power Grid | `live_metrics.json` | Produção vs. Consumo ao longo dos rollouts |
+| Step Latency | `live_metrics.json` | Latência TCP por step (ms), com média |
+| Buildings / Units | `live_metrics.json` | Contagem de edifícios e unidades |
+| Resource Throughput | `live_metrics.json` | Delta de recursos por rollout (barras +/−) |
+
+Painéis de `live_metrics.json` mostram **"Aguardando dados…"** enquanto o ficheiro não existir (ex.: treinamento ainda não iniciou).
+
+### Ficheiro sidecar `live_metrics.json`
+
+Escrito atomicamente pelo `LiveMetricsCallback` a cada rollout em `rl/logs/live_metrics.json`. Contém:
+
+```json
+{
+  "timestamp": "2026-04-03T12:00:00",
+  "policy": {
+    "action_type_distribution": [0.14, 0.14, ...],
+    "value_mean": -0.05,
+    "value_history": [...],
+    "mask_ratio_blocked": 0.23
+  },
+  "world": {
+    "resources": {"copper": 450, ...},
+    "resource_deltas": {"copper": 12.0, ...},
+    "power": {"produced": 120.5, "consumed": 80.2},
+    "power_history": [...],
+    "building_count": 7,
+    "unit_count": 2,
+    "building_history": [...]
+  },
+  "pipeline": {
+    "step_latency_ms_mean": 18.3,
+    "step_latency_history": [...]
+  },
+  "training": {
+    "total_timesteps": 25600
+  }
+}
+```
+
+---
+
 ## 5. Checkpoints e Retomada
 
 Checkpoints são salvos automaticamente a cada 10 000 passos:
@@ -335,8 +402,11 @@ python -m pytest rl/tests/ -v
 # 3. Iniciar treino (Mindustry já aberto)
 python -m rl.train --timesteps 1000000
 
-# 4. Monitorar (terminal separado)
+# 4a. Monitorar com TensorBoard (terminal separado)
 tensorboard --logdir rl/logs/
+
+# 4b. Dashboard visual em tempo real (terminal separado)
+python -m rl.dashboard
 
 # 5. Avaliar modelo final
 python -m rl.evaluate --model rl/models/final_model --episodes 5

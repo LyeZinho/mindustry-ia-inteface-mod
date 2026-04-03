@@ -128,6 +128,7 @@ class MindustryEnv(gym.Env):
         action_type = int(action[0])
         arg = int(action[1])
 
+        t0 = time.perf_counter()
         try:
             self._execute_action(action_type, arg)
             state = self._client.receive_state()
@@ -136,6 +137,8 @@ class MindustryEnv(gym.Env):
             self._client = None
             empty_obs = parse_observation(self._prev_state or {})
             return empty_obs, -1.0, True, False, {"connection_error": str(exc)}
+
+        step_latency_ms = (time.perf_counter() - t0) * 1000.0
 
         if state is None:
             _log.warning("Server closed connection during step; ending episode.")
@@ -154,7 +157,14 @@ class MindustryEnv(gym.Env):
         reward = compute_reward(self._prev_state, state, done=terminated)
         self._prev_state = state
 
-        return obs, reward, terminated, truncated, {}
+        info: Dict[str, Any] = {
+            "step_latency_ms": step_latency_ms,
+            "resources": state.get("resources", {}),
+            "power": state.get("power", {}),
+            "buildings": len(state.get("buildings", [])),
+            "units": len(state.get("friendlyUnits", [])),
+        }
+        return obs, reward, terminated, truncated, info
 
     def close(self) -> None:
         if self._client is not None:

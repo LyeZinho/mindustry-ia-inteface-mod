@@ -154,7 +154,7 @@ def main() -> None:
             tensorboard_log=args.logs_dir,
         )
 
-        callbacks = make_callbacks(save_path=args.models_dir)
+        callbacks = make_callbacks(save_path=args.models_dir, logs_dir=args.logs_dir)
 
         print(f"Starting MaskablePPO training for {args.timesteps:,} timesteps ({args.n_envs} envs)...")
         model.learn(total_timesteps=args.timesteps, callback=callbacks)
