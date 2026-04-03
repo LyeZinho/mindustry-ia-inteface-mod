@@ -20,6 +20,33 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+# ============================================================================
+# Curriculum Learning Framework (DISABLED BY DEFAULT)
+# ============================================================================
+# Set CURRICULUM_ENABLED = True to restrict agent to specific actions
+# during early training phases. Currently unused; prepared for future.
+
+CURRICULUM_ENABLED = False
+
+# Action indices (from spaces.py)
+ACTION_WAIT = 0
+ACTION_MOVE = 1
+ACTION_BUILD_TURRET = 2
+ACTION_BUILD_WALL = 3
+ACTION_BUILD_POWER = 4
+ACTION_BUILD_DRILL = 5
+ACTION_REPAIR = 6
+
+# Phases: (phase_name, timestep_range, allowed_actions)
+# Phase 0: Learn mining only (MOVE + BUILD_DRILL)
+# Phase 1: Add power generation
+# Phase 2: Full actions
+CURRICULUM_PHASES = [
+    ("mining_only", (0, 50000), [ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL]),
+    ("power_gen", (50000, 150000), [ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_POWER]),
+    ("full", (150000, float('inf')), [ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_TURRET, ACTION_BUILD_WALL, ACTION_BUILD_POWER, ACTION_BUILD_DRILL, ACTION_REPAIR]),
+]
+
 # ------------------------------------------------------------------ #
 # STATE STRUCTURE & ASSUMPTIONS FOR UPCOMING REWARD FEATURES          #
 # (drill bonus, action repetition penalty, resource bleeding penalty) #
@@ -269,3 +296,60 @@ def compute_reward(
         reward -= 0.15
 
     return float(reward)
+
+
+def apply_curriculum_action_mask(
+    timestep: int,
+) -> list[bool]:
+    """
+    Return action mask based on curriculum phase.
+    
+    When CURRICULUM_ENABLED = True, restricts available actions by training phase.
+    Allows agent to focus on fundamentals (mining) before learning advanced tactics.
+    
+    Args:
+        timestep: Current training timestep
+    
+    Returns:
+        List of 7 bools (one per action type): True=allowed, False=masked
+    
+    Note:
+        Currently unused (CURRICULUM_ENABLED=False). Enable in train.py if needed.
+    """
+    if not CURRICULUM_ENABLED:
+        return [True] * 7  # All actions allowed when disabled
+    
+    # Find which phase we're in
+    current_phase_actions = list(range(7))  # Default: all actions
+    
+    for phase_name, (start, end), actions in CURRICULUM_PHASES:
+        if start <= timestep < end:
+            current_phase_actions = actions
+            break
+    
+    # Build mask: True if action is in allowed set, False if masked
+    mask = [False] * 7
+    for action_idx in current_phase_actions:
+        mask[action_idx] = True
+    
+    return mask
+
+
+# ============================================================================
+# CURRICULUM LEARNING - HOW TO ENABLE
+# ============================================================================
+# To use phased action learning:
+#
+# 1. In this file (multi_objective.py):
+#    Set CURRICULUM_ENABLED = True
+#
+# 2. In rl/env/mindustry_env.py step() method:
+#    Call: action_mask = apply_curriculum_action_mask(self.env.num_timesteps)
+#    Apply mask before environment step
+#
+# 3. Test convergence on early phases before enabling full action space
+#
+# Current phases:
+#   - Phase 0 (0-50k steps): WAIT, MOVE, BUILD_DRILL only (mining focus)
+#   - Phase 1 (50k-150k steps): Add BUILD_POWER (energy generation)
+#   - Phase 2 (150k+ steps): All actions including BUILD_TURRET, BUILD_WALL, REPAIR

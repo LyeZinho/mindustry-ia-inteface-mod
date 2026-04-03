@@ -264,3 +264,33 @@ def test_multiple_resources_totaled():
 
     penalty = _detect_resource_bleeding_penalty(prev, curr, bleeding_threshold=-10.0)
     assert penalty == -0.10  # Total delta: (80-100) + (30-50) = -40, which is < -10
+
+
+def test_curriculum_disabled_allows_all_actions():
+    """When disabled, curriculum allows all actions."""
+    from rl.rewards.multi_objective import apply_curriculum_action_mask, CURRICULUM_ENABLED
+    
+    mask = apply_curriculum_action_mask(timestep=0)
+    assert mask == [True] * 7  # All allowed when disabled
+    assert CURRICULUM_ENABLED is False
+
+
+def test_curriculum_constants_exist():
+    """Curriculum framework constants are defined."""
+    from rl.rewards.multi_objective import (
+        CURRICULUM_ENABLED, ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL,
+        ACTION_BUILD_POWER, ACTION_BUILD_TURRET, ACTION_BUILD_WALL, ACTION_REPAIR,
+        CURRICULUM_PHASES
+    )
+    
+    # Verify constants exist
+    assert ACTION_WAIT == 0
+    assert ACTION_MOVE == 1
+    assert ACTION_BUILD_DRILL == 5
+    assert ACTION_REPAIR == 6
+    
+    # Verify phases exist
+    assert len(CURRICULUM_PHASES) == 3
+    assert CURRICULUM_PHASES[0][0] == "mining_only"
+    assert CURRICULUM_PHASES[1][0] == "power_gen"
+    assert CURRICULUM_PHASES[2][0] == "full"
