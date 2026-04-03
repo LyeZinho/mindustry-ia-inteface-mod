@@ -873,6 +873,22 @@ function handleResetCommand(parts) {
                 return;
             }
 
+            if (playerUnitId >= 0) {
+                try {
+                    let data = Team.sharded.data();
+                    if (data != null && data.units != null) {
+                        data.units.forEach(u => {
+                            if (u != null && u.id === playerUnitId) {
+                                u.remove();
+                            }
+                        });
+                    }
+                } catch (e) {
+                    Log.info("[Mimi Gateway] RESET: erro ao remover player unit antiga: " + e);
+                }
+                playerUnitId = -1;
+            }
+
             let rules = map.applyRules(Gamemode.survival);
             Vars.world.loadMap(map, rules);
             Vars.logic.play();

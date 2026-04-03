@@ -15,10 +15,13 @@ action_type:
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import gymnasium as gym
+
+_log = logging.getLogger(__name__)
 
 from rl.env.mimi_client import MimiClient
 from rl.env.spaces import (
@@ -74,9 +77,16 @@ class MindustryEnv(gym.Env):
         map_name = self._maps[self._map_index % len(self._maps)]
         self._map_index += 1
 
-        self._client.send_command(f"RESET;{map_name}")
+        try:
+            self._client.send_command(f"RESET;{map_name}")
+            state = self._client.receive_state()
+        except OSError:
+            _log.warning("Stale connection on reset; reconnecting to %s:%s", self._host, self._port)
+            self._client.close()
+            self._client = MimiClient(self._host, self._port)
+            self._client.send_command(f"RESET;{map_name}")
+            state = self._client.receive_state()
 
-        state = self._client.receive_state()
         if state is None:
             raise RuntimeError("Failed to receive initial state from Mindustry server")
         self._prev_state = state
@@ -94,11 +104,21 @@ class MindustryEnv(gym.Env):
         action_type = int(action[0])
         arg = int(action[1])
 
-        self._execute_action(action_type, arg)
+        try:
+            self._execute_action(action_type, arg)
+            state = self._client.receive_state()
+        except OSError as exc:
+            _log.warning("Connection lost during step (%s); ending episode.", exc)
+            self._client = None
+            empty_obs = parse_observation(self._prev_state or {})
+            return empty_obs, -1.0, True, False, {"connection_error": str(exc)}
 
-        state = self._client.receive_state()
         if state is None:
-            raise RuntimeError("Lost connection to Mindustry server during step")
+            _log.warning("Server closed connection during step; ending episode.")
+            self._client = None
+            empty_obs = parse_observation(self._prev_state or {})
+            return empty_obs, -1.0, True, False, {"connection_error": "EOF"}
+
         self._step_count += 1
 
         obs = parse_observation(state)
