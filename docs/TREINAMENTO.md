@@ -85,7 +85,7 @@ fps 60        # limita a 60 FPS (padrão)
 # Sem limite de FPS — use com cuidado
 ```
 
-> O mod envia estado a cada **10 ticks** (~6 Hz com FPS padrão). Aumentar o FPS do servidor acelera proporcionalmente a coleta de dados.
+> O mod envia estado a cada **10 ticks** (~6 Hz com FPS padrão). O loop de comunicação roda a **~20 Hz** (sleep 50 ms). Aumentar o FPS do servidor acelera proporcionalmente a coleta de dados.
 
 ---
 
@@ -103,7 +103,7 @@ python -m rl.train \
   --host localhost \
   --port 9000 \
   --lr 3e-4 \
-  --n-steps 32 \
+  --n-steps 256 \
   --max-steps 5000 \
   --models-dir rl/models \
   --logs-dir rl/logs
@@ -117,7 +117,7 @@ python -m rl.train \
 | `--host` | `localhost` | IP do servidor Mindustry |
 | `--port` | `9000` | Porta TCP do mod |
 | `--lr` | `3e-4` | Taxa de aprendizado do MaskablePPO |
-| `--n-steps` | `32` | Passos por rollout antes de atualizar a política |
+| `--n-steps` | `256` | Passos por rollout antes de atualizar a política |
 | `--max-steps` | `5000` | Passos máximos por episódio (truncamento) |
 | `--models-dir` | `rl/models` | Diretório para salvar checkpoints e modelo final |
 | `--logs-dir` | `rl/logs` | Diretório para logs do TensorBoard e Monitor |
@@ -279,13 +279,13 @@ reward = 0.30 × Δcore_hp
        + 0.20 × wave_survived_bonus   (1.0 se sobreviveu a uma wave)
        + 0.20 × player_alive_bonus    (1.0 se jogador vivo)
        + 0.10 × (Δresources / 500)    (500 ≈ capacidade do core)
-       + 0.08 × drill_bonus           (mineração ativa)
+       + 0.08 × drill_bonus           (contínuo: Δcopper/10, clamped [0,1])
        + 0.07 × power_balance_bonus   (produção ≥ consumo)
        + 0.05 × build_efficiency_bonus
        − 0.002                        (penalidade de tempo)
 
 # Se done=True e core_hp ≤ 0:
-reward −= 1.0                         (penalidade terminal — core destruído)
+reward −= 0.4                         (penalidade terminal — core destruído)
 
 # Se done=True e player morto (core vivo):
 reward −= 0.5                         (penalidade terminal — jogador morto)
