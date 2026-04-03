@@ -863,7 +863,7 @@ function handleResetCommand(parts) {
                     if (core != null) {
                         let polyType = Vars.content.units().find(u => u.name === "poly");
                         if (polyType != null) {
-                            let spawnedUnit = Unit.create(polyType, Team.sharded);
+                            let spawnedUnit = polyType.create(Team.sharded);
                             spawnedUnit.set(core.x, core.y);
                             spawnedUnit.add();
                             playerUnitId = spawnedUnit.id;
