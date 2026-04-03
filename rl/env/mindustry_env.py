@@ -30,7 +30,7 @@ from rl.env.spaces import (
     compute_action_mask, NUM_ACTION_TYPES, NUM_SLOTS,
     BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER, BLOCK_DRILL,
 )
-from rl.rewards.multi_objective import compute_reward
+from rl.rewards.multi_objective import compute_reward, _detect_new_drills
 
 
 DEFAULT_TRAINING_MAPS = [
@@ -164,6 +164,11 @@ class MindustryEnv(gym.Env):
             action_history=self._action_history,
         )
 
+        penalty_a_triggered, penalty_b_triggered = self._compute_penalties(
+            self._prev_state, state
+        )
+        drills_built = _detect_new_drills(self._prev_state, state)
+
         # Track action history (keep last 10 for inactivity detection)
         self._action_history.append(action_type)
         if len(self._action_history) > 10:
@@ -177,6 +182,11 @@ class MindustryEnv(gym.Env):
             "buildings": len(state.get("buildings", [])),
             "units": len(state.get("friendlyUnits", [])),
             "build_failed": bool(state.get("actionFailed", False)),
+            "drills_built_this_step": drills_built,
+            "penalty_a_triggered": penalty_a_triggered,
+            "penalty_b_triggered": penalty_b_triggered,
+            "action_taken_index": action_type,
+            "step_count": self._step_count,
         }
         return obs, reward, terminated, truncated, info
 
@@ -190,6 +200,19 @@ class MindustryEnv(gym.Env):
         if self._prev_state is None:
             return np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
         return compute_action_mask(self._prev_state)
+
+    def _compute_penalties(
+        self, prev_state: Dict[str, Any], curr_state: Dict[str, Any]
+    ) -> Tuple[int, int]:
+        from rl.rewards.multi_objective import _detect_action_repetition_penalty, _detect_resource_bleeding_penalty
+
+        def _total_resources(state: Dict[str, Any]) -> float:
+            return sum(float(v) for v in state.get("resources", {}).values())
+
+        resources_delta = _total_resources(curr_state) - _total_resources(prev_state)
+        penalty_a = _detect_action_repetition_penalty(self._action_history, resources_delta)
+        penalty_b = _detect_resource_bleeding_penalty(prev_state, curr_state)
+        return int(penalty_a != 0.0), int(penalty_b != 0.0)
 
     def _execute_action(self, action_type: int, arg: int) -> None:
         if action_type == 0:

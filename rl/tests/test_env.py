@@ -229,3 +229,56 @@ def test_step_info_contains_game_state_keys():
     assert isinstance(info["buildings"], int)
     assert isinstance(info["units"], int)
     assert isinstance(info["build_failed"], bool)
+
+
+def test_step_info_tracks_drills_built_this_step():
+    """Info dict should contain drills_built_this_step count."""
+    prev_state = {**MOCK_STATE, "buildings": []}
+    curr_state = {
+        **MOCK_STATE,
+        "buildings": [
+            {"block": "drill", "x": 10, "y": 20, "hp": 1.0},
+            {"block": "duo", "x": 15, "y": 25, "hp": 1.0},
+        ]
+    }
+    client = make_mock_client(states=[prev_state, curr_state])
+    env = MindustryEnv(client=client)
+    env.reset()
+    _, _, _, _, info = env.step(np.array([5, 0], dtype=np.int64))
+    assert "drills_built_this_step" in info
+    assert info["drills_built_this_step"] == 1
+
+
+def test_step_info_tracks_penalty_triggers():
+    """Info dict should contain penalty_a_triggered and penalty_b_triggered."""
+    prev_state = {**MOCK_STATE, "resources": {"copper": 100, "lead": 50, "graphite": 0, "titanium": 0, "thorium": 0}}
+    curr_state = {
+        **MOCK_STATE,
+        "resources": {"copper": 100, "lead": 50, "graphite": 0, "titanium": 0, "thorium": 0}
+    }
+    client = make_mock_client(states=[prev_state, curr_state])
+    env = MindustryEnv(client=client)
+    env.reset()
+    # Multiple WAIT actions (0) should not collect resources
+    for _ in range(3):
+        env._action_history.append(0)
+    _, _, _, _, info = env.step(np.array([0, 0], dtype=np.int64))
+    assert "penalty_a_triggered" in info
+    assert "penalty_b_triggered" in info
+    assert isinstance(info["penalty_a_triggered"], int)
+    assert isinstance(info["penalty_b_triggered"], int)
+    assert info["penalty_a_triggered"] in (0, 1)
+    assert info["penalty_b_triggered"] in (0, 1)
+
+
+def test_step_info_tracks_action_taken_and_step_count():
+    """Info dict should contain action_taken_index and step_count."""
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([5, 2], dtype=np.int64)
+    _, _, _, _, info = env.step(action)
+    assert "action_taken_index" in info
+    assert "step_count" in info
+    assert info["action_taken_index"] == 5
+    assert info["step_count"] == 1

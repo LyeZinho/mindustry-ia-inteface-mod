@@ -255,16 +255,23 @@ def _draw_value(ax, policy: Dict[str, Any]) -> None:
 
 def _draw_mask(ax, policy: Dict[str, Any]) -> None:
     ax.cla()
-    _style_ax(ax, "Ações Bloqueadas (%)")
-    ratio = policy.get("mask_ratio_blocked", 0.0)
-    pct = ratio * 100.0
-    bar_color = _PALETTE["red"] if pct > 60 else _PALETTE["yellow"] if pct > 30 else _PALETTE["green"]
-    ax.barh([0], [pct], color=bar_color, height=0.5)
-    ax.barh([0], [100 - pct], left=[pct], color=_PALETTE["surface"], height=0.5)
+    _style_ax(ax, "Ações Bloqueadas / Build Fails")
+    mask_pct = policy.get("mask_ratio_blocked", 0.0) * 100
+    fail_pct = policy.get("build_fail_rate", 0.0) * 100
+
+    labels = ["Mascaradas", "Build Fail"]
+    values = [mask_pct, fail_pct]
+    bar_colors = [
+        _PALETTE["red"] if mask_pct > 60 else _PALETTE["yellow"] if mask_pct > 30 else _PALETTE["green"],
+        _PALETTE["red"] if fail_pct > 20 else _PALETTE["yellow"] if fail_pct > 5 else _PALETTE["green"],
+    ]
+    for i, (label, val, color) in enumerate(zip(labels, values, bar_colors)):
+        ax.barh([i], [val], color=color, height=0.4)
+        ax.barh([i], [100 - val], left=[val], color=_PALETTE["surface"], height=0.4)
+        ax.text(50, i, f"{label}: {val:.1f}%", ha="center", va="center",
+                fontsize=9, color=_PALETTE["text"], fontweight="bold")
     ax.set_xlim(0, 100)
     ax.set_yticks([])
-    ax.text(50, 0, f"{pct:.1f}%", ha="center", va="center",
-            fontsize=11, color=_PALETTE["text"], fontweight="bold")
 
 
 def _draw_power(ax, world: Dict[str, Any]) -> None:

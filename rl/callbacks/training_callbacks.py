@@ -73,9 +73,12 @@ class LiveMetricsCallback(BaseCallback):
         self._last_building_count: int = 0
         self._last_unit_count: int = 0
         self._resources_at_rollout_start: Dict[str, float] = {}
+        self._rollout_build_fails: int = 0
+        self._build_fail_rate_history: List[float] = []
 
     def _on_rollout_start(self) -> None:
         self._resources_at_rollout_start = dict(self._last_resources)
+        self._rollout_build_fails = 0
 
     def _on_step(self) -> bool:
         for info in self.locals.get("infos", []):
@@ -94,6 +97,8 @@ class LiveMetricsCallback(BaseCallback):
             uc = info.get("units")
             if uc is not None:
                 self._last_unit_count = int(uc)
+            if info.get("build_failed", False):
+                self._rollout_build_fails += 1
         return True
 
     def _on_rollout_end(self) -> None:
@@ -163,11 +168,18 @@ class LiveMetricsCallback(BaseCallback):
             if hasattr(buf, "action_masks") and buf.action_masks is not None:
                 masks = buf.action_masks.reshape(-1, buf.action_masks.shape[-1])
                 mask_ratio = float(1.0 - np.mean(masks.astype(float)))
+            build_attempts = int(np.sum((action_types >= 2) & (action_types <= 5)))
+            fail_rate = self._rollout_build_fails / max(build_attempts, 1)
+            self._build_fail_rate_history.append(fail_rate)
+            if len(self._build_fail_rate_history) > 100:
+                self._build_fail_rate_history = self._build_fail_rate_history[-100:]
             return {
                 "action_type_distribution": action_type_dist,
                 "value_mean": value_mean,
                 "value_history": self._value_history[-50:],
                 "mask_ratio_blocked": mask_ratio,
+                "build_fail_rate": fail_rate,
+                "build_fail_rate_history": self._build_fail_rate_history[-50:],
             }
         except Exception:
             return {
@@ -175,6 +187,8 @@ class LiveMetricsCallback(BaseCallback):
                 "value_mean": 0.0,
                 "value_history": self._value_history[-50:],
                 "mask_ratio_blocked": 0.0,
+                "build_fail_rate": 0.0,
+                "build_fail_rate_history": self._build_fail_rate_history[-50:],
             }
 
 
