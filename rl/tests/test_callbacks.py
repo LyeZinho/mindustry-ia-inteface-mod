@@ -67,3 +67,10 @@ def test_live_metrics_callback_writes_on_rollout_end(tmp_path):
     assert "pipeline" in data
     assert "training" in data
     assert data["training"]["total_timesteps"] == 1024
+
+
+def test_live_metrics_callback_step_accumulates_build_fails(tmp_path):
+    cb = _make_callback(tmp_path)
+    cb.locals = {"infos": [{"build_failed": True}, {"build_failed": False}, {"build_failed": True}]}
+    cb._on_step()
+    assert cb._rollout_build_fails == 2

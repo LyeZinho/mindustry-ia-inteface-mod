@@ -13,8 +13,10 @@ MOCK_STATE = {
     "enemies": [],
     "friendlyUnits": [],
     "buildings": [],
-    "grid": [{"x": i % 31, "y": i // 31, "block": "air", "floor": "stone",
-               "team": "neutral", "hp": 0.0, "rotation": 0} for i in range(961)],
+    "actionFailed": False,
+    "grid": [],  # Empty grid (sparse format)
+    "nearbyOres": [],
+    "nearbyEnemies": [],
 }
 
 
@@ -31,7 +33,7 @@ def test_reset_returns_valid_obs():
     obs, info = env.reset()
     assert "grid" in obs and "features" in obs
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (47,)
+    assert obs["features"].shape == (77,)
     assert isinstance(info, dict)
 
 
@@ -43,7 +45,7 @@ def test_step_returns_five_tuple():
     assert len(result) == 5
     obs, reward, terminated, truncated, info = result
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (47,)
+    assert obs["features"].shape == (77,)
     assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
@@ -220,8 +222,10 @@ def test_step_info_contains_game_state_keys():
     assert "power" in info
     assert "buildings" in info
     assert "units" in info
+    assert "build_failed" in info
     assert isinstance(info["step_latency_ms"], float)
     assert info["step_latency_ms"] >= 0.0
     assert isinstance(info["resources"], dict)
     assert isinstance(info["buildings"], int)
     assert isinstance(info["units"], int)
+    assert isinstance(info["build_failed"], bool)

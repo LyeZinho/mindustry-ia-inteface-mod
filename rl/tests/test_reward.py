@@ -120,3 +120,39 @@ def test_time_penalty():
     r = compute_reward(prev, curr, done=False)
     # No positive signals, no negative terminal → just time penalty (-0.002)
     assert abs(r - (-0.002)) < 1e-6
+
+
+def test_build_fail_penalty():
+    state_ok = make_state()
+    state_fail = make_state()
+    state_fail["actionFailed"] = True
+    reward_ok = compute_reward(BASE, state_ok, done=False)
+    reward_fail = compute_reward(BASE, state_fail, done=False)
+    assert abs(reward_fail - reward_ok - (-0.15)) < 1e-6
+
+
+def test_reward_manual_mining_reward():
+    """Manual mining (inventory delta > 0) gives +0.05 bonus."""
+    prev = make_state(inventory={})
+    curr = make_state(inventory={"copper": 5})
+    r = compute_reward(prev, curr, done=False)
+    r_no_mining = compute_reward(prev, prev, done=False)
+    assert r > r_no_mining
+
+
+def test_reward_mining_delivery_bonus():
+    """Delivery bonus (+1.00) triggers when resources increase without manual mining."""
+    prev = make_state(resources={"copper": 0, "lead": 0, "graphite": 0, "titanium": 0, "thorium": 0}, inventory={})
+    curr = make_state(resources={"copper": 50, "lead": 0, "graphite": 0, "titanium": 0, "thorium": 0}, inventory={})
+    r = compute_reward(prev, curr, done=False)
+    r_no_delivery = compute_reward(prev, prev, done=False)
+    assert r > r_no_delivery
+
+
+def test_reward_no_mining_when_inventory_empty():
+    """No mining reward when inventory delta <= 0."""
+    prev = make_state(inventory={"copper": 5})
+    curr = make_state(inventory={"copper": 5})
+    r = compute_reward(prev, curr, done=False)
+    r_no_delta = compute_reward(prev, prev, done=False)
+    assert abs(r - r_no_delta) < 1e-6

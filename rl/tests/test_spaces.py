@@ -18,8 +18,9 @@ MINIMAL_STATE = {
     "enemies": [],
     "friendlyUnits": [],
     "buildings": [],
-    "grid": [{"x": i % 31, "y": i // 31, "block": "air", "floor": "stone",
-               "team": "neutral", "hp": 0.0, "rotation": 0} for i in range(961)],
+    "grid": [],  # Empty grid (sparse format)
+    "nearbyOres": [],
+    "nearbyEnemies": [],
 }
 
 
@@ -33,13 +34,13 @@ def test_obs_space_shape():
     obs = make_obs_space()
     assert isinstance(obs, spaces.Dict)
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (47,)
+    assert obs["features"].shape == (77,)
 
 
 def test_parse_observation_returns_correct_shapes():
     obs = parse_observation(MINIMAL_STATE)
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (47,)
+    assert obs["features"].shape == (77,)
 
 
 def test_parse_observation_grid_dtype():
@@ -134,25 +135,38 @@ def test_action_mask_dead_player_blocks_actions():
 def test_action_mask_no_resources_blocks_build():
     broke_state = {
         **MINIMAL_STATE,
-        "resources": {"copper": 0, "lead": 0},
+        "resources": {"copper": 0, "lead": 0, "graphite": 0},
         "buildings": [],
     }
     mask = compute_action_mask(broke_state)
     assert mask[0] == True   # WAIT
     assert mask[1] == True   # MOVE
-    assert mask[2] == False  # BUILD_TURRET (needs copper >= 6)
+    assert mask[2] == False  # BUILD_TURRET (needs copper >= 35)
     assert mask[3] == False  # BUILD_WALL (needs copper >= 6)
-    assert mask[4] == False  # BUILD_POWER (needs lead >= 14 and copper >= 10)
-    assert mask[5] == False  # BUILD_DRILL (needs copper >= 12)
+    assert mask[4] == False  # BUILD_POWER (needs copper >= 40 and lead >= 35)
+    assert mask[5] == False  # BUILD_DRILL (needs copper >= 45 and lead >= 45 and graphite >= 30)
     assert mask[6] == False  # REPAIR (no buildings)
 
 
 def test_action_mask_with_enough_resources():
     rich_state = {
         **MINIMAL_STATE,
-        "resources": {"copper": 100, "lead": 100},
+        "resources": {"copper": 100, "lead": 100, "graphite": 50},
         "buildings": [{"block": "duo", "hp": 0.5}],
     }
     mask = compute_action_mask(rich_state)
     assert np.all(mask[:NUM_ACTION_TYPES] == True)
     assert np.all(mask[NUM_ACTION_TYPES:] == True)
+
+
+def test_action_mask_partial_resources():
+    state = {
+        **MINIMAL_STATE,
+        "resources": {"copper": 35, "lead": 0, "graphite": 0},
+        "buildings": [],
+    }
+    mask = compute_action_mask(state)
+    assert mask[2] == True   # BUILD_TURRET (35 copper — exact cost)
+    assert mask[3] == True   # BUILD_WALL (35 >= 6)
+    assert mask[4] == False  # BUILD_POWER (needs lead >= 35)
+    assert mask[5] == False  # BUILD_DRILL (needs lead >= 45 and graphite >= 30)
