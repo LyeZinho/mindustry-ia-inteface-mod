@@ -373,27 +373,23 @@ function captureGameState() {
                 command: unit.command != null ? unit.command.name : "idle"
             });
         });
+         
+        // PHASE 2 OPTIMIZATION: Replace full grid matrix with sparse features
+        // Old: 961 tiles × 30-50 char strings = ~50KB
+        // New: ~50 bytes for sparse enemies/ores + resource vector
         
-        for (let dx = -radius; dx <= radius; dx++) {
-            for (let dy = -radius; dy <= radius; dy++) {
-                let tile = Vars.world.tile(centerX + dx, centerY + dy);
-                
-                if (tile != null) {
-                    let block = tile.block();
-                    let build = tile.build;
-                    state.grid.push({
-                        x: dx + radius,
-                        y: dy + radius,
-                        block: block != null ? block.name : "air",
-                        floor: tile.floor().name,
-                        team: build != null && build.team != null ? build.team.name : "neutral",
-                        hp: build != null ? Math.floor((build.health / build.maxHealth) * 100) / 100 : 0,
-                        rotation: build != null ? build.rotation : 0
-                    });
-                }
-            }
-        }
+        let playerX = state.player.x;
+        let playerY = state.player.y;
         
+        // Nearby ores: top 5 closest
+        state.nearbyOres = findNearestOres(playerX, playerY, config.gridRadius, 5);
+        
+        // Nearby enemies: top 5 closest
+        state.nearbyEnemies = findNearestEnemies(playerX, playerY, 5);
+        
+        // Keep grid array for now (optional) but empty for JSON compression
+        state.grid = [];
+         
         let allTeams = [Team.sharded, Team.crux, Team.derelict];
         allTeams.forEach(t => {
             let td = t.data();
