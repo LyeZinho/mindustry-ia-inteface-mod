@@ -1,17 +1,22 @@
 """
 MindustryEnv — Gymnasium environment wrapping the Mimi Gateway TCP mod.
 
-Observation: Dict{"grid": (4,31,31), "features": (47,)}
-Action:      MultiDiscrete([7, 9]) — [action_type, arg]
+Observation: Dict{"grid": (4,31,31), "features": (83,)}
+Action:      MultiDiscrete([12, 9]) — [action_type, arg]
 
 action_type:
-  0 = WAIT
-  1 = MOVE (arg = direction 0-7)
-  2 = BUILD_TURRET  (arg = slot 0-8)
-  3 = BUILD_WALL    (arg = slot 0-8)
-  4 = BUILD_POWER   (arg = slot 0-8)
-  5 = BUILD_DRILL   (arg = slot 0-8)
-  6 = REPAIR        (arg = slot 0-8)
+  0  = WAIT
+  1  = MOVE              (arg = direction 0-7)
+  2  = BUILD_TURRET      (arg = slot 0-8)
+  3  = BUILD_WALL        (arg = slot 0-8)
+  4  = BUILD_POWER       (arg = slot 0-8)
+  5  = BUILD_DRILL       (arg = slot 0-8)
+  6  = REPAIR            (arg = slot 0-8)
+  7  = BUILD_CONVEYOR    (arg = slot 0-8)
+  8  = BUILD_GRAPHITE_PRESS (arg = slot 0-8)
+  9  = BUILD_SILICON_SMELTER (arg = slot 0-8)
+  10 = BUILD_COMBUSTION_GEN (arg = slot 0-8)
+  11 = BUILD_PNEUMATIC_DRILL (arg = slot 0-8)
 """
 from __future__ import annotations
 
@@ -28,6 +33,7 @@ from rl.env.mimi_client import MimiClient
 from rl.env.spaces import (
     make_obs_space, make_action_space, parse_observation,
     compute_action_mask, NUM_ACTION_TYPES, NUM_SLOTS,
+    ACTION_REGISTRY, ACTION_WAIT, ACTION_MOVE, ACTION_REPAIR,
     BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER, BLOCK_DRILL,
 )
 from rl.rewards.multi_objective import compute_reward, _detect_new_drills
@@ -198,7 +204,7 @@ class MindustryEnv(gym.Env):
             self._client = None
 
     def action_masks(self) -> np.ndarray:
-        """Return action mask for MaskablePPO. Shape: (16,) = 7 action_types + 9 slots."""
+        """Return action mask for MaskablePPO. Shape: (21,) = 12 action_types + 9 slots."""
         if self._prev_state is None:
             return np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
         return compute_action_mask(self._prev_state)
@@ -219,19 +225,17 @@ class MindustryEnv(gym.Env):
         return int(penalty_a != 0.0), int(penalty_b != 0.0)
 
     def _execute_action(self, action_type: int, arg: int) -> None:
-        if action_type == 0:
-            pass
-        elif action_type == 1:
+        if action_type == ACTION_WAIT:
+            return
+        if action_type == ACTION_MOVE:
             self._client.send_command(f"PLAYER_MOVE;{arg % 8}")
-        elif action_type == 2:
-            self._client.send_command(f"PLAYER_BUILD;{BLOCK_TURRET};{arg}")
-        elif action_type == 3:
-            self._client.send_command(f"PLAYER_BUILD;{BLOCK_WALL};{arg}")
-        elif action_type == 4:
-            self._client.send_command(f"PLAYER_BUILD;{BLOCK_POWER};{arg}")
-        elif action_type == 5:
-            self._client.send_command(f"PLAYER_BUILD;{BLOCK_DRILL};{arg}")
-        elif action_type == 6:
+            return
+        if action_type == ACTION_REPAIR:
             self._client.send_command(f"REPAIR_SLOT;{arg}")
-        else:
-            raise ValueError(f"Invalid action_type: {action_type}. Must be 0-6")
+            return
+        if 0 <= action_type < len(ACTION_REGISTRY):
+            block = ACTION_REGISTRY[action_type].block
+            if block is not None:
+                self._client.send_command(f"PLAYER_BUILD;{block};{arg}")
+                return
+        raise ValueError(f"Invalid action_type: {action_type}")

@@ -6,7 +6,7 @@ from rl.env.mindustry_env import MindustryEnv
 
 MOCK_STATE = {
     "tick": 1000, "time": 500, "wave": 1, "waveTime": 300,
-    "resources": {"copper": 100, "lead": 50, "graphite": 0, "titanium": 0, "thorium": 0},
+    "resources": {"copper": 100, "lead": 50, "graphite": 20, "titanium": 0, "thorium": 0},
     "power": {"produced": 10.0, "consumed": 5.0, "stored": 100, "capacity": 1000},
     "core": {"hp": 1.0, "x": 15, "y": 15, "size": 3},
     "player": {"x": 15, "y": 15, "alive": True, "hp": 1.0},
@@ -33,7 +33,7 @@ def test_reset_returns_valid_obs():
     obs, info = env.reset()
     assert "grid" in obs and "features" in obs
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (79,)
+    assert obs["features"].shape == (83,)
     assert isinstance(info, dict)
 
 
@@ -45,7 +45,7 @@ def test_step_returns_five_tuple():
     assert len(result) == 5
     obs, reward, terminated, truncated, info = result
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (79,)
+    assert obs["features"].shape == (83,)
     assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
@@ -201,14 +201,14 @@ def test_action_masks_returns_correct_shape():
     env = MindustryEnv(client=client)
     env.reset()
     mask = env.action_masks()
-    assert mask.shape == (16,)
+    assert mask.shape == (21,)
     assert mask.dtype == np.bool_
 
 
 def test_action_masks_before_reset_returns_all_true():
     env = MindustryEnv(client=MagicMock())
     mask = env.action_masks()
-    assert mask.shape == (16,)
+    assert mask.shape == (21,)
     assert np.all(mask)
 
 
@@ -315,3 +315,48 @@ def test_action_history_includes_current_action_in_reward():
     assert info["penalty_a_triggered"] == 1, (
         "penalty_a should fire on the 3rd WAIT when current action is in history"
     )
+
+
+def test_step_build_conveyor_sends_player_build():
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([7, 3], dtype=np.int64)
+    env.step(action)
+    client.send_command.assert_any_call("PLAYER_BUILD;conveyor;3")
+
+
+def test_step_build_graphite_press_sends_player_build():
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([8, 0], dtype=np.int64)
+    env.step(action)
+    client.send_command.assert_any_call("PLAYER_BUILD;graphite-press;0")
+
+
+def test_step_build_silicon_smelter_sends_player_build():
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([9, 1], dtype=np.int64)
+    env.step(action)
+    client.send_command.assert_any_call("PLAYER_BUILD;silicon-smelter;1")
+
+
+def test_step_build_combustion_gen_sends_player_build():
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([10, 2], dtype=np.int64)
+    env.step(action)
+    client.send_command.assert_any_call("PLAYER_BUILD;combustion-generator;2")
+
+
+def test_step_build_pneumatic_drill_sends_player_build():
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([11, 5], dtype=np.int64)
+    env.step(action)
+    client.send_command.assert_any_call("PLAYER_BUILD;pneumatic-drill;5")
