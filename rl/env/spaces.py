@@ -21,7 +21,7 @@ from gymnasium import spaces
 # ------------------------------------------------------------------ #
 
 GRID_SIZE = 31
-OBS_FEATURES_DIM = 47   # was 43, +4 for player (dx, dy, alive, hp)
+OBS_FEATURES_DIM = 77   # Old 47 + 5 ores (dist/angle/block_id)×3=15 + 5 enemies (dist/angle/hp)×3=15 = 77
 NUM_ACTION_TYPES = 7    # WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR
 NUM_SLOTS = 9           # 3x3 relative grid around unit (also covers 8 directions + 0 for WAIT)
 MAX_ENEMIES = 5
@@ -201,6 +201,26 @@ def _parse_features(state: Dict[str, Any]) -> np.ndarray:
         feat[45] = 1.0
         feat[46] = float(player.get("hp", 0.0))
     # else stays 0.0
+
+    # PHASE 2: Sparse ore/enemy features (30 new dims, total 77)
+    # Top 5 nearest ores: 5 × (distance + angle + block_id) = 15 dims (indices 47-61)
+    # Top 5 nearest enemies: 5 × (distance + angle + hp) = 15 dims (indices 62-76)
+    
+    nearby_ores = state.get("nearbyOres", [])
+    for i in range(min(5, len(nearby_ores))):
+        ore = nearby_ores[i]
+        offset = 47 + i * 3
+        feat[offset] = float(ore.get("distance", 0.0)) / 50.0
+        feat[offset + 1] = float(ore.get("angle", 0.0)) / 180.0
+        feat[offset + 2] = float(ore.get("block_id", 0)) / 32.0
+    
+    nearby_enemies = state.get("nearbyEnemies", [])
+    for i in range(min(5, len(nearby_enemies))):
+        enemy = nearby_enemies[i]
+        offset = 47 + 15 + i * 3
+        feat[offset] = float(enemy.get("distance", 0.0)) / 50.0
+        feat[offset + 1] = float(enemy.get("angle", 0.0)) / 180.0
+        feat[offset + 2] = float(enemy.get("hp", 0.0))
 
     return feat
 
