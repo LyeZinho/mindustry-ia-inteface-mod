@@ -11,7 +11,7 @@ Action: MultiDiscrete([7, 9])
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, NamedTuple, Optional
 
 import numpy as np
 from gymnasium import spaces
@@ -22,7 +22,6 @@ from gymnasium import spaces
 
 GRID_SIZE = 31
 OBS_FEATURES_DIM = 79   # 1(core_hp) + 7(resources) + 4(power) + 1(wave) + 20(enemies) + 9(friendly) + 7(player/core) + 15(nearby_ores) + 15(nearby_enemies) = 79
-NUM_ACTION_TYPES = 7    # WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR
 NUM_SLOTS = 9           # 3x3 relative grid around unit (also covers 8 directions + 0 for WAIT)
 MAX_ENEMIES = 5
 MAX_FRIENDLY = 3
@@ -32,10 +31,43 @@ FRIENDLY_FEATURES = 3   # hp, x, y
 ALLY_TEAMS = {"sharded", "player"}
 ENEMY_TEAMS = {"crux"}
 
-BLOCK_TURRET = "duo"
-BLOCK_WALL = "copper-wall"
-BLOCK_POWER = "solar-panel"
-BLOCK_DRILL = "mechanical-drill"
+class ActionDef(NamedTuple):
+    name: str
+    block: str | None
+    mask_fn: Callable[[dict], bool]
+
+ACTION_REGISTRY: list[ActionDef] = [
+    ActionDef("WAIT",                None,                     lambda r: True),
+    ActionDef("MOVE",                None,                     lambda r: True),
+    ActionDef("BUILD_TURRET",        "duo",                    lambda r: r.get("copper", 0) >= 35),
+    ActionDef("BUILD_WALL",          "copper-wall",            lambda r: r.get("copper", 0) >= 6),
+    ActionDef("BUILD_POWER",         "solar-panel",            lambda r: r.get("copper", 0) >= 40 and r.get("lead", 0) >= 35),
+    ActionDef("BUILD_DRILL",         "mechanical-drill",       lambda r: r.get("copper", 0) >= 12),
+    ActionDef("REPAIR",              None,                     lambda r: True),
+    ActionDef("BUILD_CONVEYOR",      "conveyor",               lambda r: r.get("copper", 0) >= 1),
+    ActionDef("BUILD_GRAPHITE_PRESS","graphite-press",         lambda r: r.get("copper", 0) >= 75),
+    ActionDef("BUILD_SILICON_SMELTER","silicon-smelter",       lambda r: r.get("copper", 0) >= 30 and r.get("lead", 0) >= 30),
+    ActionDef("BUILD_COMBUSTION_GEN","combustion-generator",   lambda r: r.get("copper", 0) >= 25 and r.get("lead", 0) >= 15),
+    ActionDef("BUILD_PNEUMATIC_DRILL","pneumatic-drill",       lambda r: r.get("copper", 0) >= 12 and r.get("graphite", 0) >= 10),
+]
+
+NUM_ACTION_TYPES: int = len(ACTION_REGISTRY)
+ACTION_NAMES: list[str] = [a.name for a in ACTION_REGISTRY]
+
+def _action_idx(name: str) -> int:
+    for i, a in enumerate(ACTION_REGISTRY):
+        if a.name == name:
+            return i
+    raise ValueError(f"Unknown action: {name}")
+
+ACTION_WAIT   = _action_idx("WAIT")
+ACTION_MOVE   = _action_idx("MOVE")
+ACTION_REPAIR = _action_idx("REPAIR")
+
+BLOCK_TURRET = ACTION_REGISTRY[_action_idx("BUILD_TURRET")].block
+BLOCK_WALL   = ACTION_REGISTRY[_action_idx("BUILD_WALL")].block
+BLOCK_POWER  = ACTION_REGISTRY[_action_idx("BUILD_POWER")].block
+BLOCK_DRILL  = ACTION_REGISTRY[_action_idx("BUILD_DRILL")].block
 
 # Deterministic block encoding — no hash collisions
 BLOCK_IDS: dict[str, int] = {
@@ -70,6 +102,9 @@ BLOCK_IDS: dict[str, int] = {
     "mend-projector": 28,
     "overdrive-projector": 29,
     "force-projector": 30,
+    "graphite-press": 31,
+    "silicon-smelter": 32,
+    "combustion-generator": 33,
 }
 _NUM_KNOWN_BLOCKS = len(BLOCK_IDS) + 1  # +1 for "unknown"
 
@@ -232,44 +267,29 @@ def _parse_features(state: Dict[str, Any]) -> np.ndarray:
 # ------------------------------------------------------------------ #
 
 def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
-    """Return a 1-D boolean mask of length NUM_ACTION_TYPES + NUM_SLOTS (7+9=16).
+    """Return boolean mask of shape (NUM_ACTION_TYPES + NUM_SLOTS,).
 
-    First 7 entries: which *action_types* are valid.
-    Next 9 entries:  which *slots/directions* are valid (always True — we don't
-                     mask spatial arguments).
-
-    Masking rules:
-      - WAIT (0) is always valid.
-      - If player is dead → only WAIT is valid (indices 1-6 masked).
-      - BUILD_TURRET (2): needs copper >= 35  (duo cost)
-      - BUILD_WALL (3):   needs copper >= 6   (copper-wall cost)
-      - BUILD_POWER (4):  needs copper >= 40 AND lead >= 35  (solar-panel)
-      - BUILD_DRILL (5):  needs copper >= 12  (mechanical-drill)
-      - REPAIR (6):       needs at least one building
+    First NUM_ACTION_TYPES entries: valid action types.
+    Next NUM_SLOTS entries: valid slots (always True).
     """
     mask = np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
 
     player = state.get("player", {})
     if not player.get("alive", False):
-        # Dead: only WAIT valid among action_types
         mask[1:NUM_ACTION_TYPES] = False
         return mask
 
     resources = state.get("resources", {})
-    copper = float(resources.get("copper", 0))
-    lead = float(resources.get("lead", 0))
-
-    if copper < 35:
-        mask[2] = False  # BUILD_TURRET (duo: 35 copper)
-    if copper < 6:
-        mask[3] = False  # BUILD_WALL (copper-wall: 6 copper)
-    if copper < 40 or lead < 35:
-        mask[4] = False  # BUILD_POWER (solar-panel: ~40 copper + ~35 lead, unverified)
-    if copper < 12:
-        mask[5] = False  # BUILD_DRILL (mechanical-drill: 12 copper only)
-
     buildings = state.get("buildings", [])
-    if len(buildings) == 0:
-        mask[6] = False  # REPAIR
+
+    for i, action in enumerate(ACTION_REGISTRY):
+        if i in (ACTION_WAIT, ACTION_MOVE):
+            continue
+        if i == ACTION_REPAIR:
+            if len(buildings) == 0:
+                mask[i] = False
+            continue
+        if not action.mask_fn(resources):
+            mask[i] = False
 
     return mask

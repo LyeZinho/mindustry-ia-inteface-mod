@@ -170,3 +170,69 @@ def test_action_mask_partial_resources():
     assert mask[3] == True   # BUILD_WALL (35 >= 6)
     assert mask[4] == False  # BUILD_POWER (needs lead >= 35)
     assert mask[5] == True   # BUILD_DRILL (35 copper >= 12)
+
+
+def test_num_action_types_matches_registry():
+    from rl.env.spaces import ACTION_REGISTRY, NUM_ACTION_TYPES
+    assert NUM_ACTION_TYPES == len(ACTION_REGISTRY)
+    assert NUM_ACTION_TYPES == 12
+
+
+def test_action_names_length_matches_num_action_types():
+    from rl.env.spaces import ACTION_NAMES, NUM_ACTION_TYPES
+    assert len(ACTION_NAMES) == NUM_ACTION_TYPES
+
+
+def test_new_action_masks_no_resources():
+    from rl.env.spaces import compute_action_mask, NUM_ACTION_TYPES
+    broke_state = {
+        "tick": 1000, "time": 500, "wave": 3, "waveTime": 300,
+        "resources": {"copper": 0, "lead": 0, "graphite": 0},
+        "power": {"produced": 0, "consumed": 0, "stored": 0, "capacity": 1},
+        "core": {"hp": 0.95, "x": 15, "y": 15, "size": 3},
+        "player": {"x": 16, "y": 17, "alive": True, "hp": 0.8},
+        "enemies": [], "friendlyUnits": [], "buildings": [], "grid": [],
+        "nearbyOres": [], "nearbyEnemies": [],
+    }
+    mask = compute_action_mask(broke_state)
+    assert mask.shape == (NUM_ACTION_TYPES + 9,)
+    assert mask[7]  == False
+    assert mask[8]  == False
+    assert mask[9]  == False
+    assert mask[10] == False
+    assert mask[11] == False
+
+
+def test_new_action_masks_with_resources():
+    from rl.env.spaces import compute_action_mask
+    rich_state = {
+        "tick": 1000, "time": 500, "wave": 3, "waveTime": 300,
+        "resources": {"copper": 100, "lead": 100, "graphite": 50},
+        "power": {"produced": 0, "consumed": 0, "stored": 0, "capacity": 1},
+        "core": {"hp": 0.95, "x": 15, "y": 15, "size": 3},
+        "player": {"x": 16, "y": 17, "alive": True, "hp": 0.8},
+        "enemies": [], "friendlyUnits": [],
+        "buildings": [{"block": "duo", "hp": 0.5}],
+        "grid": [], "nearbyOres": [], "nearbyEnemies": [],
+    }
+    mask = compute_action_mask(rich_state)
+    assert mask[7]  == True
+    assert mask[8]  == True
+    assert mask[9]  == True
+    assert mask[10] == True
+    assert mask[11] == True
+
+
+def test_pneumatic_drill_needs_graphite():
+    from rl.env.spaces import compute_action_mask
+    state = {
+        "tick": 1000, "time": 500, "wave": 3, "waveTime": 300,
+        "resources": {"copper": 100, "lead": 100, "graphite": 0},
+        "power": {"produced": 0, "consumed": 0, "stored": 0, "capacity": 1},
+        "core": {"hp": 0.95, "x": 15, "y": 15, "size": 3},
+        "player": {"x": 16, "y": 17, "alive": True, "hp": 0.8},
+        "enemies": [], "friendlyUnits": [], "buildings": [], "grid": [],
+        "nearbyOres": [], "nearbyEnemies": [],
+    }
+    mask = compute_action_mask(state)
+    assert mask[11] == False
