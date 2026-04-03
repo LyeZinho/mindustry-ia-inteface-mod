@@ -42,6 +42,7 @@ class MindustryEnv(gym.Env):
         self,
         host: str = "localhost",
         port: int = 9000,
+        tcp_port: Optional[int] = None,
         max_steps: int = 5000,
         client: Optional[MimiClient] = None,
         maps: Optional[list[str]] = None,
@@ -52,7 +53,7 @@ class MindustryEnv(gym.Env):
         self.max_steps = max_steps
 
         self._host = host
-        self._port = port
+        self._port = tcp_port if tcp_port is not None else port
         self._client: Optional[MimiClient] = client
         self._maps: list[str] = maps if maps is not None else DEFAULT_TRAINING_MAPS
         self._map_index: int = 0

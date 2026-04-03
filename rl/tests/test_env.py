@@ -186,3 +186,9 @@ def test_reset_uses_default_maps_when_none_provided():
     client.send_command.assert_called_once()
     call_arg = client.send_command.call_args[0][0]
     assert call_arg.startswith("RESET;")
+
+
+def test_env_accepts_tcp_port_parameter():
+    """MindustryEnv should accept tcp_port and use it to connect."""
+    env = MindustryEnv(tcp_port=9002, client=MagicMock())
+    assert env._port == 9002
