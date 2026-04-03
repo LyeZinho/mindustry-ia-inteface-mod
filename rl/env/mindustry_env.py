@@ -156,6 +156,12 @@ class MindustryEnv(gym.Env):
         terminated = core_hp <= 0.0 or not player_alive
         truncated = self._step_count >= self.max_steps
 
+        # Update action history BEFORE reward computation so current action
+        # is included in streak checks (fixes off-by-one timing bug)
+        self._action_history.append(action_type)
+        if len(self._action_history) > 10:
+            self._action_history.pop(0)
+
         reward = compute_reward(
             self._prev_state,
             state,
@@ -169,10 +175,6 @@ class MindustryEnv(gym.Env):
         )
         drills_built = _detect_new_drills(self._prev_state, state)
 
-        # Track action history (keep last 10 for inactivity detection)
-        self._action_history.append(action_type)
-        if len(self._action_history) > 10:
-            self._action_history.pop(0)
         self._prev_state = state
 
         info: Dict[str, Any] = {

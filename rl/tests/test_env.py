@@ -282,3 +282,36 @@ def test_step_info_tracks_action_taken_and_step_count():
     assert "step_count" in info
     assert info["action_taken_index"] == 5
     assert info["step_count"] == 1
+
+
+def test_action_history_includes_current_action_in_reward():
+    """Current action must be in history when reward is computed (Bug 3 fix).
+
+    With 2 prior WAITs in history and a 3rd WAIT as current action,
+    penalty_a should fire on THIS step (not the next).
+    """
+    mock_state = {
+        "core": {"hp": 1.0, "x": 5, "y": 5, "size": 3},
+        "wave": 1, "waveTime": 300,
+        "resources": {"copper": 0, "lead": 0, "graphite": 0,
+                      "titanium": 0, "thorium": 0},
+        "power": {"produced": 0, "consumed": 0, "stored": 0, "capacity": 0},
+        "buildings": [], "enemies": [], "friendlyUnits": [],
+        "player": {"alive": True, "hp": 1.0, "x": 5, "y": 5},
+        "grid": [], "inventory": {}, "actionFailed": False,
+        "nearbyOres": [], "nearbyEnemies": [], "tick": 1000, "time": 500,
+    }
+    client = MagicMock()
+    client.receive_state.return_value = mock_state
+
+    env = MindustryEnv(client=client)
+    env._prev_state = mock_state
+    env._action_history = [0, 0]  # Two prior WAITs already in history
+
+    # Third WAIT — penalty_a should fire on THIS step (current action in history)
+    action = np.array([0, 0])  # WAIT
+    _, _, _, _, info = env.step(action)
+
+    assert info["penalty_a_triggered"] == 1, (
+        "penalty_a should fire on the 3rd WAIT when current action is in history"
+    )
