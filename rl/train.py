@@ -59,7 +59,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--lr-end", type=float, default=1e-5, dest="lr_end",
                    help="Final learning rate for linear schedule (default: 1e-5)")
-    p.add_argument("--n-steps", type=int, default=256, dest="n_steps")
+    p.add_argument("--n-steps", type=int, default=2048, dest="n_steps")
     p.add_argument("--models-dir", default="rl/models")
     p.add_argument("--logs-dir", default="rl/logs")
     p.add_argument(
@@ -87,7 +87,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument(
         "--mod-zip",
-        default="mimi-gateway-v1.0.4.zip",
+        default="mimi-gateway-v1.0.5.zip",
         dest="mod_zip",
         help="Path to the Mimi Gateway mod zip to install",
     )
@@ -133,12 +133,14 @@ def main() -> None:
     try:
         if args.n_envs == 1:
             from stable_baselines3.common.monitor import Monitor
-            env = Monitor(
+            from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+            env = DummyVecEnv([lambda: Monitor(
                 MindustryEnv(host=args.host, tcp_port=args.port, max_steps=args.max_steps, maps=maps),
                 filename=f"{args.logs_dir}/monitor",
-            )
+            )])
+            env = VecNormalize(env, norm_obs=True, norm_reward=False)
         else:
-            from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
+            from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
             env_fns = [
                 _make_env_factory(
                     host=args.host,
@@ -148,16 +150,21 @@ def main() -> None:
                 )
                 for i in range(args.n_envs)
             ]
-            env = VecMonitor(SubprocVecEnv(env_fns), filename=f"{args.logs_dir}/monitor")
+            env = VecNormalize(
+                VecMonitor(SubprocVecEnv(env_fns), filename=f"{args.logs_dir}/monitor"),
+                norm_obs=True,
+                norm_reward=False,
+            )
 
         model = MaskablePPO(
             policy="MultiInputPolicy",
             env=env,
             learning_rate=_make_lr_schedule(args.lr, args.lr_end),
             n_steps=args.n_steps,
-            gamma=0.95,
+            gamma=0.99,
             gae_lambda=0.95,
             ent_coef=0.05,
+            policy_kwargs={"net_arch": [256, 256]},
             verbose=1,
             tensorboard_log=args.logs_dir,
         )
@@ -169,6 +176,7 @@ def main() -> None:
 
         final_path = f"{args.models_dir}/final_model"
         model.save(final_path)
+        env.save(f"{args.models_dir}/vecnormalize.pkl")
         print(f"Training complete. Model saved to {final_path}.zip")
 
     finally:
