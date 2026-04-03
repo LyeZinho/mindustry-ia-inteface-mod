@@ -86,6 +86,23 @@ from typing import Any, Dict, Optional
 # ------------------------------------------------------------------ #
 
 
+def _detect_new_drills(prev_state: Dict[str, Any], curr_state: Dict[str, Any]) -> int:
+    """Count newly constructed drills by comparing building lists."""
+    prev_drills = {
+        (b.get("x"), b.get("y"))
+        for b in prev_state.get("buildings", [])
+        if b.get("block") == "drill"
+    }
+
+    curr_drills = {
+        (b.get("x"), b.get("y"))
+        for b in curr_state.get("buildings", [])
+        if b.get("block") == "drill"
+    }
+
+    return len(curr_drills - prev_drills)
+
+
 def compute_reward(
     prev_state: Dict[str, Any],
     curr_state: Dict[str, Any],
@@ -124,6 +141,9 @@ def compute_reward(
     copper_delta = curr_copper - prev_copper
     drill_bonus = min(1.0, max(0.0, copper_delta / 10.0))
 
+    new_drills = _detect_new_drills(prev_state, curr_state)
+    drill_construction_bonus = min(1.0, new_drills * 0.15)
+
     power = curr_state.get("power", {})
     produced = float(power.get("produced", 0.0))
     consumed = float(power.get("consumed", 0.0))
@@ -153,7 +173,8 @@ def compute_reward(
         0.30 * core_hp_delta
         + 0.20 * wave_survived_bonus
         + 0.10 * (resources_delta / 500.0)
-        + 0.08 * drill_bonus
+        + 0.05 * drill_bonus
+        + 0.15 * drill_construction_bonus
         + 0.07 * power_balance_bonus
         + 0.05 * build_efficiency_bonus
         + 0.20 * player_alive_bonus
