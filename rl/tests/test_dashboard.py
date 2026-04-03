@@ -31,3 +31,19 @@ def test_load_monitor_csv_missing_file_returns_empty_df(tmp_path):
     df = load_monitor_csv_path(tmp_path / "nonexistent.csv")
     assert len(df) == 0
     assert list(df.columns) == ["r", "l", "t"]
+
+from rl.dashboard import compute_stats
+
+def test_compute_stats_rolling_mean():
+    df = pd.DataFrame({"r": [1.0, 2.0, 3.0, 4.0, 5.0], "l": [10, 20, 30, 40, 50], "t": range(5)})
+    stats = compute_stats(df, window=3)
+    assert stats["total_episodes"] == 5
+    assert abs(stats["mean_reward"] - 4.0) < 0.01   # mean of last 3: 3,4,5
+    assert stats["max_reward"] == 5.0
+    assert abs(stats["mean_length"] - 40.0) < 0.01  # mean of last 3 lengths
+
+def test_compute_stats_empty():
+    df = pd.DataFrame(columns=["r", "l", "t"])
+    stats = compute_stats(df, window=50)
+    assert stats["total_episodes"] == 0
+    assert stats["mean_reward"] == 0.0

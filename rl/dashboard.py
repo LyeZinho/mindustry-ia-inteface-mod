@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import io
 from pathlib import Path
+from typing import Dict, Any
 
 import pandas as pd
 
@@ -27,6 +28,19 @@ def load_monitor_csv_path(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame(columns=["r", "l", "t"])
     return load_monitor_csv(path.read_text(encoding="utf-8"))
+
+
+def compute_stats(df: pd.DataFrame, window: int = 50) -> Dict[str, Any]:
+    if len(df) == 0:
+        return {"total_episodes": 0, "mean_reward": 0.0, "max_reward": 0.0, "mean_length": 0.0}
+    tail = df.tail(window)
+    return {
+        "total_episodes": len(df),
+        "mean_reward": float(tail["r"].mean()),
+        "max_reward": float(df["r"].max()),
+        "mean_length": float(tail["l"].mean()),
+    }
+
 
 
 def parse_args() -> argparse.Namespace:
