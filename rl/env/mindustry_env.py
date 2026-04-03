@@ -75,7 +75,8 @@ class MindustryEnv(gym.Env):
 
         self._prev_state: Optional[Dict[str, Any]] = None
         self._step_count: int = 0
-        self._action_history: list[int] = []  # Track last N actions for inactivity detection
+        self._action_history: list[int] = []
+        self._global_timestep: int = 0
 
     def reset(
         self,
@@ -207,7 +208,17 @@ class MindustryEnv(gym.Env):
         """Return action mask for MaskablePPO. Shape: (21,) = 12 action_types + 9 slots."""
         if self._prev_state is None:
             return np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
-        return compute_action_mask(self._prev_state)
+
+        resource_mask = compute_action_mask(self._prev_state)
+
+        from rl.rewards.multi_objective import apply_curriculum_action_mask, CURRICULUM_ENABLED
+        if CURRICULUM_ENABLED:
+            curriculum_mask = apply_curriculum_action_mask(self._global_timestep)
+            for i in range(NUM_ACTION_TYPES):
+                if not curriculum_mask[i]:
+                    resource_mask[i] = False
+
+        return resource_mask
 
     def _compute_penalties(
         self, prev_state: Dict[str, Any], curr_state: Dict[str, Any]

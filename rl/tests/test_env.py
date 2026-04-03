@@ -33,7 +33,7 @@ def test_reset_returns_valid_obs():
     obs, info = env.reset()
     assert "grid" in obs and "features" in obs
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (83,)
+    assert obs["features"].shape == (92,)
     assert isinstance(info, dict)
 
 
@@ -45,7 +45,7 @@ def test_step_returns_five_tuple():
     assert len(result) == 5
     obs, reward, terminated, truncated, info = result
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (83,)
+    assert obs["features"].shape == (92,)
     assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
@@ -360,3 +360,28 @@ def test_step_build_pneumatic_drill_sends_player_build():
     action = np.array([11, 5], dtype=np.int64)
     env.step(action)
     client.send_command.assert_any_call("PLAYER_BUILD;pneumatic-drill;5")
+
+
+def test_action_masks_respects_curriculum_phase0(monkeypatch):
+    import rl.rewards.multi_objective as mo
+    monkeypatch.setattr(mo, "CURRICULUM_ENABLED", True)
+
+    from rl.env.spaces import NUM_ACTION_TYPES
+
+    env = MindustryEnv(client=make_mock_client())
+    env.reset()
+    env._global_timestep = 10000
+
+    mask = env.action_masks()
+    action_mask = mask[:NUM_ACTION_TYPES]
+    assert action_mask[0] is True or bool(action_mask[0]) is True
+    assert action_mask[1] is True or bool(action_mask[1]) is True
+    assert action_mask[5] is True or bool(action_mask[5]) is True
+    assert bool(action_mask[2]) is False
+    assert bool(action_mask[7]) is False
+
+
+def test_env_has_global_timestep_attribute():
+    env = MindustryEnv(client=make_mock_client())
+    assert hasattr(env, "_global_timestep")
+    assert env._global_timestep == 0
