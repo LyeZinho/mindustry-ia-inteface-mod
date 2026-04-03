@@ -200,6 +200,73 @@ function cleanup() {
 }
 
 // ============================================================================
+// PHASE 2: SPARSE STATE HELPERS
+// ============================================================================
+
+/**
+ * Find top-N nearest ore tiles in grid around center.
+ * Returns array of {distance, angle_deg, block_id, x, y}
+ * Ores: copper-ore, lead-ore, coal, graphite-ore, titanium-ore, thorium-ore, scrap
+ */
+function findNearestOres(centerX, centerY, radius, maxOres) {
+    let ores = [];
+    let oreNames = ["copper-ore", "lead-ore", "coal", "graphite-ore", "titanium-ore", "thorium-ore", "scrap"];
+    
+    for (let dx = -radius; dx <= radius; dx++) {
+        for (let dy = -radius; dy <= radius; dy++) {
+            let tile = Vars.world.tile(centerX + dx, centerY + dy);
+            
+            if (tile != null) {
+                let block = tile.block();
+                let blockName = block != null ? block.name : "air";
+                
+                // Check if this tile is an ore
+                if (oreNames.includes(blockName)) {
+                    let distance = Math.sqrt(dx * dx + dy * dy);
+                    let angle = Math.atan2(dy, dx) * 180 / Math.PI; // degrees [-180, 180]
+                    
+                    ores.push({
+                        distance: distance,
+                        angle: angle,
+                        block_id: getBlockId(blockName),
+                        x: centerX + dx,
+                        y: centerY + dy
+                    });
+                }
+            }
+        }
+    }
+    
+    // Sort by distance, take top maxOres
+    ores.sort((a, b) => a.distance - b.distance);
+    return ores.slice(0, maxOres);
+}
+
+/**
+ * Find top-N nearest enemy units by distance.
+ * Returns array of {distance, angle_deg, type_id, hp}
+ */
+function findNearestEnemies(playerX, playerY, maxEnemies) {
+    let enemies = [];
+    
+    Units.nearbyEnemies(Team.sharded, playerX * 8, playerY * 8, 300, (unit) => {
+        let dx = Math.floor(unit.x / 8) - playerX;
+        let dy = Math.floor(unit.y / 8) - playerY;
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        
+        enemies.push({
+            distance: distance,
+            angle: angle,
+            hp: Math.floor((unit.health / unit.maxHealth) * 100) / 100
+        });
+    });
+    
+    enemies.sort((a, b) => a.distance - b.distance);
+    return enemies.slice(0, maxEnemies);
+}
+
+// ============================================================================
 // PHASE 3: Perception Extraction
 // ============================================================================
 function captureGameState() {
