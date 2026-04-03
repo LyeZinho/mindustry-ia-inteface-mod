@@ -3,7 +3,7 @@ Observation and action space definitions for the Mindustry RL environment.
 
 Observation: Dict with two tensors:
   "grid":     float32 (4, 31, 31)  — CNN input
-  "features": float32 (47,)        — MLP input (was 43, +4 player fields)
+  "features": float32 (79,)        — MLP input (resources: copper,lead,graphite,titanium,thorium,coal,sand; power; wave; enemies; friendly; player)
 
 Action: MultiDiscrete([7, 9])
   action[0]: action_type  ∈ {0..6}  (WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR)
@@ -21,7 +21,7 @@ from gymnasium import spaces
 # ------------------------------------------------------------------ #
 
 GRID_SIZE = 31
-OBS_FEATURES_DIM = 77   # Old 47 + 5 ores (dist/angle/block_id)×3=15 + 5 enemies (dist/angle/hp)×3=15 = 77
+OBS_FEATURES_DIM = 79   # 1(core_hp) + 7(resources) + 4(power) + 1(wave) + 20(enemies) + 9(friendly) + 7(player/core) + 15(nearby_ores) + 15(nearby_enemies) = 79
 NUM_ACTION_TYPES = 7    # WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR
 NUM_SLOTS = 9           # 3x3 relative grid around unit (also covers 8 directions + 0 for WAIT)
 MAX_ENEMIES = 5
@@ -157,19 +157,21 @@ def _parse_features(state: Dict[str, Any]) -> np.ndarray:
     feat[3] = res.get("graphite", 0.0) / 1000.0
     feat[4] = res.get("titanium", 0.0) / 1000.0
     feat[5] = res.get("thorium", 0.0) / 1000.0
+    feat[6] = res.get("coal", 0.0) / 1000.0
+    feat[7] = res.get("sand", 0.0) / 1000.0
 
     power = state.get("power", {})
     max_power = max(float(power.get("capacity", 1.0)), 1.0)
-    feat[6] = float(power.get("produced", 0.0)) / max_power
-    feat[7] = float(power.get("consumed", 0.0)) / max_power
-    feat[8] = float(power.get("stored", 0.0)) / max_power
-    feat[9] = 1.0  # capacity normalized = 1
+    feat[8] = float(power.get("produced", 0.0)) / max_power
+    feat[9] = float(power.get("consumed", 0.0)) / max_power
+    feat[10] = float(power.get("stored", 0.0)) / max_power
+    feat[11] = 1.0  # capacity normalized = 1
 
-    feat[10] = float(state.get("wave", 0)) / 100.0
+    feat[12] = float(state.get("wave", 0)) / 100.0
 
     # Enemies (top MAX_ENEMIES, zero-padded)
     enemies = state.get("enemies", [])[:MAX_ENEMIES]
-    base = 11
+    base = 13
     for i, e in enumerate(enemies):
         offset = base + i * ENEMY_FEATURES
         feat[offset] = float(e.get("hp", 0.0))
@@ -179,45 +181,45 @@ def _parse_features(state: Dict[str, Any]) -> np.ndarray:
 
     # Friendly units (top MAX_FRIENDLY, zero-padded)
     friendly = state.get("friendlyUnits", [])[:MAX_FRIENDLY]
-    base = 31
+    base = 33
     for i, u in enumerate(friendly):
         offset = base + i * FRIENDLY_FEATURES
         feat[offset] = float(u.get("hp", 0.0))
         feat[offset + 1] = float(u.get("x", 0)) / (GRID_SIZE - 1)
         feat[offset + 2] = float(u.get("y", 0)) / (GRID_SIZE - 1)
 
-    feat[40] = float(state.get("waveTime", 0)) / 3600.0
-    feat[41] = float(core.get("x", 0)) / (GRID_SIZE - 1)
-    feat[42] = float(core.get("y", 0)) / (GRID_SIZE - 1)
+    feat[42] = float(state.get("waveTime", 0)) / 3600.0
+    feat[43] = float(core.get("x", 0)) / (GRID_SIZE - 1)
+    feat[44] = float(core.get("y", 0)) / (GRID_SIZE - 1)
 
-    # Player unit position relative to core (feat[43..46])
+    # Player unit position relative to core (feat[45..48])
     player = state.get("player", {})
     core_x = float(core.get("x", 0))
     core_y = float(core.get("y", 0))
     player_alive = bool(player.get("alive", False))
     if player_alive:
-        feat[43] = (float(player.get("x", core_x)) - core_x) / 15.0
-        feat[44] = (float(player.get("y", core_y)) - core_y) / 15.0
-        feat[45] = 1.0
-        feat[46] = float(player.get("hp", 0.0))
+        feat[45] = (float(player.get("x", core_x)) - core_x) / 15.0
+        feat[46] = (float(player.get("y", core_y)) - core_y) / 15.0
+        feat[47] = 1.0
+        feat[48] = float(player.get("hp", 0.0))
     # else stays 0.0
 
-    # PHASE 2: Sparse ore/enemy features (30 new dims, total 77)
-    # Top 5 nearest ores: 5 × (distance + angle + block_id) = 15 dims (indices 47-61)
-    # Top 5 nearest enemies: 5 × (distance + angle + hp) = 15 dims (indices 62-76)
-    
+    # PHASE 2: Sparse ore/enemy features (30 dims, indices 49-78)
+    # Top 5 nearest ores: 5 × (distance + angle + block_id) = 15 dims (indices 49-63)
+    # Top 5 nearest enemies: 5 × (distance + angle + hp) = 15 dims (indices 64-78)
+
     nearby_ores = state.get("nearbyOres", [])
     for i in range(min(5, len(nearby_ores))):
         ore = nearby_ores[i]
-        offset = 47 + i * 3
+        offset = 49 + i * 3
         feat[offset] = float(ore.get("distance", 0.0)) / 50.0
         feat[offset + 1] = float(ore.get("angle", 0.0)) / 180.0
         feat[offset + 2] = float(ore.get("block_id", 0)) / 32.0
-    
+
     nearby_enemies = state.get("nearbyEnemies", [])
     for i in range(min(5, len(nearby_enemies))):
         enemy = nearby_enemies[i]
-        offset = 47 + 15 + i * 3
+        offset = 64 + i * 3
         feat[offset] = float(enemy.get("distance", 0.0)) / 50.0
         feat[offset + 1] = float(enemy.get("angle", 0.0)) / 180.0
         feat[offset + 2] = float(enemy.get("hp", 0.0))
@@ -242,7 +244,7 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
       - BUILD_TURRET (2): needs copper >= 35  (duo cost)
       - BUILD_WALL (3):   needs copper >= 6   (copper-wall cost)
       - BUILD_POWER (4):  needs copper >= 40 AND lead >= 35  (solar-panel)
-      - BUILD_DRILL (5):  needs copper >= 45 AND lead >= 45 AND graphite >= 30  (mechanical-drill)
+      - BUILD_DRILL (5):  needs copper >= 12  (mechanical-drill)
       - REPAIR (6):       needs at least one building
     """
     mask = np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
@@ -256,16 +258,15 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
     resources = state.get("resources", {})
     copper = float(resources.get("copper", 0))
     lead = float(resources.get("lead", 0))
-    graphite = float(resources.get("graphite", 0))
 
     if copper < 35:
         mask[2] = False  # BUILD_TURRET (duo: 35 copper)
     if copper < 6:
         mask[3] = False  # BUILD_WALL (copper-wall: 6 copper)
     if copper < 40 or lead < 35:
-        mask[4] = False  # BUILD_POWER (solar-panel: 40 copper + 35 lead)
-    if copper < 45 or lead < 45 or graphite < 30:
-        mask[5] = False  # BUILD_DRILL (mechanical-drill: 45 copper + 45 lead + 30 graphite)
+        mask[4] = False  # BUILD_POWER (solar-panel: ~40 copper + ~35 lead, unverified)
+    if copper < 12:
+        mask[5] = False  # BUILD_DRILL (mechanical-drill: 12 copper only)
 
     buildings = state.get("buildings", [])
     if len(buildings) == 0:

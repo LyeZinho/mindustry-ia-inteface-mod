@@ -9,7 +9,7 @@ Base Rewards:
   0.30 * core_hp_delta              (defend core from damage)
   0.20 * wave_survived_bonus        (survive wave transitions)
   0.10 * resources_delta / 500      (collect resources passively)
-  0.05 * drill_bonus                (passive copper from mining)
+  0.05 * drill_bonus                (passive mining gain: copper + lead + coal)
   0.15 * drill_construction_bonus   (ACTIVE: build new drills - instantaneous!)
   0.07 * power_balance_bonus        (maintain power generation)
   0.05 * build_efficiency_bonus     (construct efficiently)
@@ -287,10 +287,13 @@ def compute_reward(
 
     resources_delta = _total_resources(curr_state) - _total_resources(prev_state)
 
-    prev_copper = float(prev_state.get("resources", {}).get("copper", 0.0))
-    curr_copper = float(curr_state.get("resources", {}).get("copper", 0.0))
-    copper_delta = curr_copper - prev_copper
-    drill_bonus = min(1.0, max(0.0, copper_delta / 10.0))
+    _DRILL_MINED = ("copper", "lead", "coal")
+    mined_delta = sum(
+        float(curr_state.get("resources", {}).get(r, 0.0))
+        - float(prev_state.get("resources", {}).get(r, 0.0))
+        for r in _DRILL_MINED
+    )
+    drill_bonus = min(1.0, max(0.0, mined_delta / 10.0))
 
     new_drills = _detect_new_drills(prev_state, curr_state)
     drill_construction_bonus = min(1.0, new_drills * 0.15)

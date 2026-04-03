@@ -33,7 +33,7 @@ def test_reset_returns_valid_obs():
     obs, info = env.reset()
     assert "grid" in obs and "features" in obs
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (77,)
+    assert obs["features"].shape == (79,)
     assert isinstance(info, dict)
 
 
@@ -45,7 +45,7 @@ def test_step_returns_five_tuple():
     assert len(result) == 5
     obs, reward, terminated, truncated, info = result
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (77,)
+    assert obs["features"].shape == (79,)
     assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)

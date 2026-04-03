@@ -34,13 +34,13 @@ def test_obs_space_shape():
     obs = make_obs_space()
     assert isinstance(obs, spaces.Dict)
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (77,)
+    assert obs["features"].shape == (79,)
 
 
 def test_parse_observation_returns_correct_shapes():
     obs = parse_observation(MINIMAL_STATE)
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (77,)
+    assert obs["features"].shape == (79,)
 
 
 def test_parse_observation_grid_dtype():
@@ -60,27 +60,27 @@ def test_parse_observation_grid_within_range():
 
 
 def test_parse_observation_player_features():
-    """feat[43..46] encode player position relative to core and alive/hp."""
+    """feat[45..48] encode player position relative to core and alive/hp."""
     obs = parse_observation(MINIMAL_STATE)
     feat = obs["features"]
     # player at (16,17), core at (15,15) → dx=1, dy=2, both ÷15
-    assert feat[43] == pytest.approx(1.0 / 15.0, abs=1e-5)
-    assert feat[44] == pytest.approx(2.0 / 15.0, abs=1e-5)
-    assert feat[45] == pytest.approx(1.0)   # alive
-    assert feat[46] == pytest.approx(0.8)   # hp
+    assert feat[45] == pytest.approx(1.0 / 15.0, abs=1e-5)
+    assert feat[46] == pytest.approx(2.0 / 15.0, abs=1e-5)
+    assert feat[47] == pytest.approx(1.0)   # alive
+    assert feat[48] == pytest.approx(0.8)   # hp
 
 
 def test_parse_observation_player_dead():
-    """feat[45]=0 and feat[46]=0 when player not alive."""
+    """feat[47]=0 and feat[48]=0 when player not alive."""
     state = {**MINIMAL_STATE, "player": {"x": 0, "y": 0, "alive": False, "hp": 0.0}}
     obs = parse_observation(state)
-    assert obs["features"][45] == pytest.approx(0.0)
-    assert obs["features"][46] == pytest.approx(0.0)
+    assert obs["features"][47] == pytest.approx(0.0)
+    assert obs["features"][48] == pytest.approx(0.0)
 
 
 def test_parse_observation_zero_pads_missing_enemies():
     obs = parse_observation(MINIMAL_STATE)
-    enemy_block = obs["features"][11:31]
+    enemy_block = obs["features"][13:33]
     assert np.all(enemy_block == 0.0)
 
 
@@ -144,7 +144,7 @@ def test_action_mask_no_resources_blocks_build():
     assert mask[2] == False  # BUILD_TURRET (needs copper >= 35)
     assert mask[3] == False  # BUILD_WALL (needs copper >= 6)
     assert mask[4] == False  # BUILD_POWER (needs copper >= 40 and lead >= 35)
-    assert mask[5] == False  # BUILD_DRILL (needs copper >= 45 and lead >= 45 and graphite >= 30)
+    assert mask[5] == False  # BUILD_DRILL (needs copper >= 12)
     assert mask[6] == False  # REPAIR (no buildings)
 
 
@@ -169,4 +169,4 @@ def test_action_mask_partial_resources():
     assert mask[2] == True   # BUILD_TURRET (35 copper — exact cost)
     assert mask[3] == True   # BUILD_WALL (35 >= 6)
     assert mask[4] == False  # BUILD_POWER (needs lead >= 35)
-    assert mask[5] == False  # BUILD_DRILL (needs lead >= 45 and graphite >= 30)
+    assert mask[5] == True   # BUILD_DRILL (35 copper >= 12)
