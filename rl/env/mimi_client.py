@@ -21,7 +21,7 @@ class MimiClient:
         self,
         host: str = "localhost",
         port: int = 9000,
-        timeout: float = 10.0,
+        timeout: float = 30.0,
         _sock: Optional[socket.socket] = None,
     ) -> None:
         if _sock is not None:

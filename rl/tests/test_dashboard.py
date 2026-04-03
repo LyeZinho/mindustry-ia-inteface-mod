@@ -24,8 +24,10 @@ def test_load_monitor_csv_empty_returns_empty_df():
     empty = "#header\nr,l,t\n"
     df = load_monitor_csv(io.StringIO(empty))
     assert len(df) == 0
+    assert list(df.columns) == ["r", "l", "t"]
 
 def test_load_monitor_csv_missing_file_returns_empty_df(tmp_path):
     from rl.dashboard import load_monitor_csv_path
     df = load_monitor_csv_path(tmp_path / "nonexistent.csv")
     assert len(df) == 0
+    assert list(df.columns) == ["r", "l", "t"]

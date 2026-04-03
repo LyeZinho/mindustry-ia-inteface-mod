@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 
-def load_monitor_csv(source) -> pd.DataFrame:
+def load_monitor_csv(source: str | io.StringIO) -> pd.DataFrame:
     """Parse SB3 monitor CSV from a file-like object, skipping the JSON header line."""
     if hasattr(source, "read"):
         text = source.read()
@@ -26,7 +26,7 @@ def load_monitor_csv_path(path: Path) -> pd.DataFrame:
     path = Path(path)
     if not path.exists():
         return pd.DataFrame(columns=["r", "l", "t"])
-    return load_monitor_csv(path.read_text())
+    return load_monitor_csv(path.read_text(encoding="utf-8"))
 
 
 def parse_args() -> argparse.Namespace:
