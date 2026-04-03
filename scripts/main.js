@@ -877,15 +877,14 @@ function handleResetCommand(parts) {
             Vars.world.loadMap(map, rules);
             Vars.logic.play();
 
-            // Open game server port for human spectators (only on first map load)
-            if (!Core.net.active()) {
-                try {
+            try {
+                if (!Vars.net.active()) {
                     let gamePort = parseInt(java.lang.System.getProperty("mindustry.port", "6567"));
-                    Core.net.host(gamePort);
+                    Vars.net.host(gamePort);
                     Log.info("[Mimi Gateway] Game server opened for spectators on port " + gamePort);
-                } catch(e) {
-                    Log.warn("[Mimi Gateway] Could not open game server: " + e);
                 }
+            } catch(e) {
+                Log.warn("[Mimi Gateway] Could not open game server: " + e);
             }
 
             // Set wave spacing to half normal (2× faster waves)
