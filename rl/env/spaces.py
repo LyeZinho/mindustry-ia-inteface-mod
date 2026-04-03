@@ -3,12 +3,11 @@ Observation and action space definitions for the Mindustry RL environment.
 
 Observation: Dict with two tensors:
   "grid":     float32 (4, 31, 31)  — CNN input
-  "features": float32 (43,)        — MLP input
+  "features": float32 (47,)        — MLP input (was 43, +4 player fields)
 
-Action: MultiDiscrete([8, 31, 31])
-  action[0]: action_type  ∈ {0..7}
-  action[1]: x            ∈ {0..30}
-  action[2]: y            ∈ {0..30}
+Action: MultiDiscrete([7, 9])
+  action[0]: action_type  ∈ {0..6}  (WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR)
+  action[1]: arg          ∈ {0..8}  (direction 0-7 for MOVE; relative slot 0-8 for build/repair; ignored for WAIT)
 """
 from __future__ import annotations
 
@@ -22,12 +21,13 @@ from gymnasium import spaces
 # ------------------------------------------------------------------ #
 
 GRID_SIZE = 31
-OBS_FEATURES_DIM = 43
-NUM_ACTIONS = 8
+OBS_FEATURES_DIM = 47   # was 43, +4 for player (dx, dy, alive, hp)
+NUM_ACTION_TYPES = 7    # WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR
+NUM_SLOTS = 9           # 3x3 relative grid around unit (also covers 8 directions + 0 for WAIT)
 MAX_ENEMIES = 5
 MAX_FRIENDLY = 3
-ENEMY_FEATURES = 4   # hp, x, y, type_enc
-FRIENDLY_FEATURES = 3  # hp, x, y
+ENEMY_FEATURES = 4      # hp, x, y, type_enc
+FRIENDLY_FEATURES = 3   # hp, x, y
 
 ALLY_TEAMS = {"sharded", "player"}
 ENEMY_TEAMS = {"crux"}
@@ -35,6 +35,17 @@ ENEMY_TEAMS = {"crux"}
 BLOCK_TURRET = "duo"
 BLOCK_WALL = "copper-wall"
 BLOCK_POWER = "solar-panel"
+BLOCK_DRILL = "mechanical-drill"
+
+# Slot (0-8) → (dx, dy) in tiles, relative to player unit
+# Row-major 3×3: top-left=0, top-center=1, ... bottom-right=8
+# y+ = north on Mindustry map
+SLOT_DX = [-1,  0,  1, -1,  0,  1, -1,  0,  1]
+SLOT_DY = [ 1,  1,  1,  0,  0,  0, -1, -1, -1]
+
+# Direction (0-7) for MOVE: N/NE/E/SE/S/SW/W/NW
+MOVE_DIR_DX = [0, 1, 1,  1,  0, -1, -1, -1]
+MOVE_DIR_DY = [1, 1, 0, -1, -1, -1,  0,  1]
 
 
 # ------------------------------------------------------------------ #
@@ -49,7 +60,7 @@ def make_obs_space() -> spaces.Dict:
 
 
 def make_action_space() -> spaces.MultiDiscrete:
-    return spaces.MultiDiscrete([NUM_ACTIONS, GRID_SIZE, GRID_SIZE])
+    return spaces.MultiDiscrete([NUM_ACTION_TYPES, NUM_SLOTS])
 
 
 # ------------------------------------------------------------------ #
@@ -136,5 +147,17 @@ def _parse_features(state: Dict[str, Any]) -> np.ndarray:
     feat[40] = float(state.get("waveTime", 0)) / 3600.0
     feat[41] = float(core.get("x", 0)) / (GRID_SIZE - 1)
     feat[42] = float(core.get("y", 0)) / (GRID_SIZE - 1)
+
+    # Player unit position relative to core (feat[43..46])
+    player = state.get("player", {})
+    core_x = float(core.get("x", 0))
+    core_y = float(core.get("y", 0))
+    player_alive = bool(player.get("alive", False))
+    if player_alive:
+        feat[43] = (float(player.get("x", core_x)) - core_x) / 15.0
+        feat[44] = (float(player.get("y", core_y)) - core_y) / 15.0
+        feat[45] = 1.0
+        feat[46] = float(player.get("hp", 0.0))
+    # else stays 0.0
 
     return feat
