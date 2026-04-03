@@ -23,6 +23,12 @@ from rl.env.mindustry_env import MindustryEnv
 from rl.callbacks.training_callbacks import make_callbacks
 
 
+def _make_lr_schedule(lr_start: float, lr_end: float) -> Callable[[float], float]:
+    def _schedule(progress_remaining: float) -> float:
+        return lr_end + (lr_start - lr_end) * progress_remaining
+    return _schedule
+
+
 def _install_mod(mod_zip: str, server_data_dir: str) -> None:
     src = Path(mod_zip)
     if not src.exists():
@@ -51,6 +57,8 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--timesteps", type=int, default=1_000_000)
     p.add_argument("--max-steps", type=int, default=5000, dest="max_steps")
     p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--lr-end", type=float, default=1e-5, dest="lr_end",
+                   help="Final learning rate for linear schedule (default: 1e-5)")
     p.add_argument("--n-steps", type=int, default=256, dest="n_steps")
     p.add_argument("--models-dir", default="rl/models")
     p.add_argument("--logs-dir", default="rl/logs")
@@ -145,7 +153,7 @@ def main() -> None:
         model = MaskablePPO(
             policy="MultiInputPolicy",
             env=env,
-            learning_rate=args.lr,
+            learning_rate=_make_lr_schedule(args.lr, args.lr_end),
             n_steps=args.n_steps,
             gamma=0.95,
             gae_lambda=0.95,

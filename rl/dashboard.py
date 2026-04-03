@@ -108,7 +108,8 @@ def build_figure():
     ax_latency  = fig.add_subplot(gs[2, 1])
     ax_counts   = fig.add_subplot(gs[2, 2])
 
-    ax_resources = fig.add_subplot(gs[3, :])
+    ax_resources = fig.add_subplot(gs[3, :2])
+    ax_stability = fig.add_subplot(gs[3, 2])
 
     ax_stats    = fig.add_subplot(gs[4, :])
     ax_stats.axis("off")
@@ -124,6 +125,7 @@ def build_figure():
         "latency":   ax_latency,
         "counts":    ax_counts,
         "resources": ax_resources,
+        "stability": ax_stability,
         "stats":     ax_stats,
     }
     return fig, axes
@@ -150,6 +152,7 @@ def make_updater(axes, csv_path: str, metrics_path: str, window: int):
         _draw_reward(axes["reward"], df, window)
         _draw_length(axes["length"], df, window)
         _draw_hist(axes["hist"], df)
+        _draw_stability(axes["stability"], df)
 
         policy = metrics.get("policy", {})
         if policy:
@@ -170,7 +173,7 @@ def make_updater(axes, csv_path: str, metrics_path: str, window: int):
             _draw_resources(axes["resources"], world)
         else:
             _waiting(axes["power"], "Power Grid")
-            _waiting(axes["latency"], "Step Latency (ms)")
+            _waiting(axes["latency"], "Step Latency + Jitter (ms)")
             _waiting(axes["counts"], "Buildings / Units")
             _waiting(axes["resources"], "Resource Throughput")
 
@@ -203,6 +206,25 @@ def _draw_hist(ax, df: pd.DataFrame) -> None:
     _style_ax(ax, "Distribuição de Rewards", "Reward")
     if len(df) > 1:
         ax.hist(df["r"], bins=40, color=_PALETTE["purple"], alpha=0.7, edgecolor=_PALETTE["bg_fig"])
+
+
+def _draw_stability(ax, df: pd.DataFrame, window: int = 20) -> None:
+    ax.cla()
+    _style_ax(ax, f"Stability Index (σ reward, {window}ep)", "Episódio")
+    if len(df) < window:
+        ax.text(0.5, 0.5, f"Aguardando {window} ep…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    rolling_std = df["r"].rolling(window).std().dropna()
+    xs = rolling_std.index
+    vals = rolling_std.values
+    bar_color = _PALETTE["red"] if vals[-1] > 1.0 else _PALETTE["yellow"] if vals[-1] > 0.5 else _PALETTE["green"]
+    ax.plot(xs, vals, color=bar_color, linewidth=1.5)
+    ax.fill_between(xs, vals, alpha=0.15, color=bar_color)
+    ax.axhline(vals[-1], color=bar_color, linewidth=0.8, linestyle="--", alpha=0.6)
+    ax.text(0.98, 0.95, f"σ={vals[-1]:.3f}",
+            transform=ax.transAxes, ha="right", va="top",
+            fontsize=9, color=bar_color, fontweight="bold")
 
 
 def _draw_action_dist(ax, policy: Dict[str, Any]) -> None:
@@ -266,15 +288,22 @@ def _draw_power(ax, world: Dict[str, Any]) -> None:
 
 def _draw_latency(ax, pipeline: Dict[str, Any]) -> None:
     ax.cla()
-    _style_ax(ax, "Step Latency (ms)", "Step (últimos 50)")
+    _style_ax(ax, "Step Latency + Jitter (ms)", "Step (últimos 50)")
     history = pipeline.get("step_latency_history", [])
     if history:
         xs = list(range(len(history)))
-        ax.fill_between(xs, history, alpha=0.3, color=_PALETTE["teal"])
-        ax.plot(xs, history, color=_PALETTE["teal"], linewidth=1.0)
+        arr = np.array(history)
+        ax.fill_between(xs, arr, alpha=0.3, color=_PALETTE["teal"])
+        ax.plot(xs, arr, color=_PALETTE["teal"], linewidth=1.0)
         mean_val = pipeline.get("step_latency_ms_mean", 0.0)
+        std_val = pipeline.get("step_latency_ms_std", 0.0)
         ax.axhline(mean_val, color=_PALETTE["yellow"], linewidth=1, linestyle="--", alpha=0.8)
-        ax.text(0.98, 0.95, f"μ={mean_val:.1f}ms",
+        if std_val > 0:
+            ax.axhline(mean_val + std_val, color=_PALETTE["red"], linewidth=0.8,
+                       linestyle=":", alpha=0.6)
+            ax.axhline(mean_val - std_val, color=_PALETTE["red"], linewidth=0.8,
+                       linestyle=":", alpha=0.6)
+        ax.text(0.98, 0.95, f"μ={mean_val:.1f}ms  σ={std_val:.1f}ms",
                 transform=ax.transAxes, ha="right", va="top",
                 fontsize=8, color=_PALETTE["yellow"])
 

@@ -138,6 +138,7 @@ class LiveMetricsCallback(BaseCallback):
             },
             "pipeline": {
                 "step_latency_ms_mean": float(np.mean(list(self._step_latencies))) if self._step_latencies else 0.0,
+                "step_latency_ms_std": float(np.std(list(self._step_latencies))) if len(self._step_latencies) > 1 else 0.0,
                 "step_latency_history": list(self._step_latencies)[-50:],
             },
             "training": {
