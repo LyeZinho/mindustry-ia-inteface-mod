@@ -78,6 +78,22 @@ function getBlockId(blockName) {
 }
 
 // ============================================================================
+// ORE ID ENUMERATION
+// ============================================================================
+// Ores in Mindustry are floor overlays (tile.overlay()), NOT blocks.
+// Must match ore_id mapping in rl/env/spaces.py exactly.
+const ORE_IDS = {
+    "ore-copper":   1,
+    "ore-lead":     2,
+    "ore-graphite": 3,
+    "ore-coal":     4,
+    "ore-titanium": 5,
+    "ore-thorium":  6,
+    "ore-scrap":    7,
+};
+const ORE_NAMES = Object.keys(ORE_IDS);
+
+// ============================================================================
 // GLOBAL STATE
 // ============================================================================
 let serverSocket = null;
@@ -203,43 +219,57 @@ function cleanup() {
 // PHASE 2: SPARSE STATE HELPERS
 // ============================================================================
 
-/**
- * Find top-N nearest ore tiles in grid around center.
- * Returns array of {distance, angle_deg, block_id, x, y}
- * Ores: copper-ore, lead-ore, coal, graphite-ore, titanium-ore, thorium-ore, scrap
- */
 function findNearestOres(centerX, centerY, radius, maxOres) {
     let ores = [];
-    let oreNames = ["copper-ore", "lead-ore", "coal", "graphite-ore", "titanium-ore", "thorium-ore", "scrap"];
-    
     for (let dx = -radius; dx <= radius; dx++) {
         for (let dy = -radius; dy <= radius; dy++) {
             let tile = Vars.world.tile(centerX + dx, centerY + dy);
-            
-            if (tile != null) {
-                let block = tile.block();
-                let blockName = block != null ? block.name : "air";
-                
-                // Check if this tile is an ore
-                if (oreNames.includes(blockName)) {
-                    let distance = Math.sqrt(dx * dx + dy * dy);
-                    let angle = Math.atan2(dy, dx) * 180 / Math.PI; // degrees [-180, 180]
-                    
-                    ores.push({
-                        distance: distance,
-                        angle: angle,
-                        block_id: getBlockId(blockName),
-                        x: centerX + dx,
-                        y: centerY + dy
-                    });
-                }
+            if (tile == null) continue;
+            let overlay = tile.overlay();
+            let overlayName = overlay != null ? overlay.name : "air";
+            if (ORE_NAMES.includes(overlayName)) {
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                ores.push({
+                    distance: distance,
+                    angle: angle,
+                    block_id: ORE_IDS[overlayName],
+                    x: centerX + dx,
+                    y: centerY + dy
+                });
             }
         }
     }
-    
-    // Sort by distance, take top maxOres
     ores.sort((a, b) => a.distance - b.distance);
     return ores.slice(0, maxOres);
+}
+
+function getSlotsOreType(playerTileX, playerTileY) {
+    let result = [];
+    for (let i = 0; i < SLOT_DX.length; i++) {
+        let tx = playerTileX + SLOT_DX[i];
+        let ty = playerTileY + SLOT_DY[i];
+        let tile = Vars.world.tile(tx, ty);
+        if (tile == null) { result.push(0); continue; }
+        let overlay = tile.overlay();
+        let overlayName = overlay != null ? overlay.name : "air";
+        result.push(ORE_IDS[overlayName] || 0);
+    }
+    return result;
+}
+
+function getDrillsOnOre(buildings) {
+    let count = 0;
+    for (let i = 0; i < buildings.length; i++) {
+        let b = buildings[i];
+        if (b.block == null || b.block.indexOf("drill") === -1) continue;
+        let tile = Vars.world.tile(b.x, b.y);
+        if (tile == null) continue;
+        let overlay = tile.overlay();
+        let overlayName = overlay != null ? overlay.name : "air";
+        if (ORE_IDS[overlayName]) count++;
+    }
+    return count;
 }
 
 /**
@@ -386,6 +416,9 @@ function captureGameState() {
         
         // Nearby enemies: top 5 closest
         state.nearbyEnemies = findNearestEnemies(playerX, playerY, 5);
+        
+        state.slotsOreType = getSlotsOreType(playerX, playerY);
+        state.drillsOnOre = getDrillsOnOre(state.buildings);
         
         // Keep grid array for now (optional) but empty for JSON compression
         state.grid = [];
