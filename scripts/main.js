@@ -12,6 +12,23 @@ const config = {
     debug: true
 };
 
+// Read TCP port from mimi_port.txt if present (used for multi-instance training)
+(function() {
+    try {
+        let portFile = Vars.dataDirectory.child("mimi_port.txt");
+        if (portFile.exists()) {
+            let portStr = portFile.readString().trim();
+            let parsed = parseInt(portStr);
+            if (!isNaN(parsed) && parsed > 0) {
+                config.port = parsed;
+                Log.info("[Mimi Gateway] Port loaded from mimi_port.txt: " + config.port);
+            }
+        }
+    } catch(e) {
+        Log.info("[Mimi Gateway] mimi_port.txt not found, using default port " + config.port);
+    }
+})();
+
 // ============================================================================
 // GLOBAL STATE
 // ============================================================================
@@ -854,6 +871,10 @@ function handleResetCommand(parts) {
             let rules = map.applyRules(Gamemode.survival);
             Vars.world.loadMap(map, rules);
             Vars.logic.play();
+
+            // Set wave spacing to half normal (2× faster waves)
+            Vars.state.rules.waveSpacing = 7200;
+            Log.info("[Mimi Gateway] waveSpacing set to 7200 (2x faster)");
 
             // Spawn player unit (poly) at core position
             Core.app.post(() => {
