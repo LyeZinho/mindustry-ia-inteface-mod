@@ -927,7 +927,7 @@ function init() {
     Log.info("==============================================");
     
     // Spectator mode: any human player who joins is set to Team.derelict
-    Events.on(EventType.PlayerJoin.class, event => {
+    Events.on(EventType.PlayerJoin, event => {
         let p = event.player;
         p.team(Team.derelict);
         Call.sendMessage("[yellow][Mimi AI] Você entrou como espectador. Aproveite o treinamento!");
