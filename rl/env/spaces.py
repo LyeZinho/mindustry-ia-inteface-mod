@@ -3,10 +3,10 @@ Observation and action space definitions for the Mindustry RL environment.
 
 Observation: Dict with two tensors:
   "grid":     float32 (4, 31, 31)  — CNN input
-  "features": float32 (79,)        — MLP input (resources: copper,lead,graphite,titanium,thorium,coal,sand; power; wave; enemies; friendly; player)
+  "features": float32 (92,)        — MLP input (resources: copper,lead,graphite,titanium,thorium,coal,sand; power; wave; enemies; friendly; player; ore_in_slot[0..8])
 
-Action: MultiDiscrete([7, 9])
-  action[0]: action_type  ∈ {0..6}  (WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR)
+Action: MultiDiscrete([12, 9])
+  action[0]: action_type  ∈ {0..11} (WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR, BUILD_CONVEYOR, BUILD_GRAPHITE_PRESS, BUILD_SILICON_SMELTER, BUILD_COMBUSTION_GEN, BUILD_PNEUMATIC_DRILL)
   action[1]: arg          ∈ {0..8}  (direction 0-7 for MOVE; relative slot 0-8 for build/repair; ignored for WAIT)
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from gymnasium import spaces
 # ------------------------------------------------------------------ #
 
 GRID_SIZE = 31
-OBS_FEATURES_DIM = 83   # 1(core_hp)+7(res)+4(power)+1(wave)+20(enemies)+9(friendly)+7(player/core)+15(nearby_ores)+15(nearby_enemies)+4(ext_resources)=83
+OBS_FEATURES_DIM = 92   # 1(core_hp)+7(res)+4(power)+1(wave)+20(enemies)+9(friendly)+7(player/core)+15(nearby_ores)+15(nearby_enemies)+4(ext_resources)+9(ore_in_slot)=92
 EXTENDED_RESOURCES: list[str] = ["silicon", "oil", "water", "metaglass"]
 NUM_SLOTS = 9           # 3x3 relative grid around unit (also covers 8 directions + 0 for WAIT)
 MAX_ENEMIES = 5
@@ -262,6 +262,11 @@ def _parse_features(state: Dict[str, Any]) -> np.ndarray:
         feat[offset] = float(enemy.get("distance", 0.0)) / 50.0
         feat[offset + 1] = float(enemy.get("angle", 0.0)) / 180.0
         feat[offset + 2] = float(enemy.get("hp", 0.0))
+
+    slots_ore = state.get("slotsOreType", [])
+    for i in range(9):
+        ore_id = int(slots_ore[i]) if i < len(slots_ore) else 0
+        feat[83 + i] = ore_id / 7.0
 
     return feat
 

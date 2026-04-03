@@ -34,13 +34,13 @@ def test_obs_space_shape():
     obs = make_obs_space()
     assert isinstance(obs, spaces.Dict)
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (83,)
+    assert obs["features"].shape == (92,)
 
 
 def test_parse_observation_returns_correct_shapes():
     obs = parse_observation(MINIMAL_STATE)
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (83,)
+    assert obs["features"].shape == (92,)
 
 
 def test_parse_observation_grid_dtype():
@@ -242,17 +242,17 @@ def test_pneumatic_drill_needs_graphite():
 
 def test_obs_features_dim_is_83():
     from rl.env.spaces import OBS_FEATURES_DIM
-    assert OBS_FEATURES_DIM == 83
+    assert OBS_FEATURES_DIM == 92
 
 
 def test_obs_space_shape_is_83():
     obs = make_obs_space()
-    assert obs["features"].shape == (83,)
+    assert obs["features"].shape == (92,)
 
 
 def test_parse_observation_shape_is_83():
     obs = parse_observation(MINIMAL_STATE)
-    assert obs["features"].shape == (83,)
+    assert obs["features"].shape == (92,)
 
 
 def test_extended_resources_in_obs():
@@ -271,7 +271,7 @@ def test_extended_resources_in_obs():
         "nearbyOres": [], "nearbyEnemies": [],
     }
     obs = parse_observation(state)
-    assert obs["features"].shape == (83,)
+    assert obs["features"].shape == (92,)
     assert obs["features"][79] == pytest.approx(150 / 1000.0)  # silicon
     assert obs["features"][80] == pytest.approx(75  / 1000.0)  # oil
     assert obs["features"][81] == pytest.approx(200 / 1000.0)  # water
@@ -285,3 +285,33 @@ def test_extended_resources_zero_when_absent():
     assert obs["features"][80] == 0.0
     assert obs["features"][81] == 0.0
     assert obs["features"][82] == 0.0
+
+
+def test_obs_features_dim_is_92():
+    from rl.env.spaces import OBS_FEATURES_DIM
+    assert OBS_FEATURES_DIM == 92
+
+
+def test_ore_in_slot_parsed_from_slots_ore_type():
+    from rl.env.spaces import parse_observation
+    state = {
+        "core": {"hp": 1.0, "x": 10, "y": 10},
+        "resources": {},
+        "power": {},
+        "player": {"alive": True, "x": 10, "y": 10, "hp": 1.0},
+        "slotsOreType": [1, 0, 2, 0, 3, 0, 4, 5, 6],
+    }
+    obs = parse_observation(state)
+    feats = obs["features"]
+    assert len(feats) == 92
+    assert abs(feats[83] - 1/7) < 1e-5
+    assert feats[84] == 0.0
+    assert abs(feats[85] - 2/7) < 1e-5
+    assert abs(feats[87] - 3/7) < 1e-5
+
+
+def test_ore_in_slot_missing_slotsOreType_gives_zeros():
+    from rl.env.spaces import parse_observation
+    state = {"core": {}, "resources": {}, "power": {}, "player": {}}
+    obs = parse_observation(state)
+    assert all(obs["features"][83:92] == 0.0)
