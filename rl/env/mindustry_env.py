@@ -1,8 +1,17 @@
 """
 MindustryEnv — Gymnasium environment wrapping the Mimi Gateway TCP mod.
 
-Observation: Dict{"grid": (4,31,31), "features": (43,)}
-Action:      MultiDiscrete([8, 31, 31]) — [action_type, x, y]
+Observation: Dict{"grid": (4,31,31), "features": (47,)}
+Action:      MultiDiscrete([7, 9]) — [action_type, arg]
+
+action_type:
+  0 = WAIT
+  1 = MOVE (arg = direction 0-7)
+  2 = BUILD_TURRET  (arg = slot 0-8)
+  3 = BUILD_WALL    (arg = slot 0-8)
+  4 = BUILD_POWER   (arg = slot 0-8)
+  5 = BUILD_DRILL   (arg = slot 0-8)
+  6 = REPAIR        (arg = slot 0-8)
 """
 from __future__ import annotations
 
@@ -12,17 +21,17 @@ import numpy as np
 import gymnasium as gym
 
 from rl.env.mimi_client import MimiClient
-from rl.env.spaces import make_obs_space, make_action_space, parse_observation, BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER
+from rl.env.spaces import (
+    make_obs_space, make_action_space, parse_observation,
+    BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER, BLOCK_DRILL,
+)
 from rl.rewards.multi_objective import compute_reward
 
 
 DEFAULT_TRAINING_MAPS = [
-    "Ancient Caldera",
-    "Windswept Islands",
-    "Tarpit Depths",
-    "Craters",
-    "Fungal Pass",
-    "Nuclear Complex",
+    "Ancient Caldera", "Archipelago", "Debris Field", "Domain", "Fork", "Fortress",
+    "Glacier", "Islands", "Labyrinth", "Maze", "Molten Lake", "Mud Flats",
+    "Passage", "Shattered", "Tendrils", "Triad", "Veins", "Wasteland",
 ]
 
 
@@ -76,16 +85,15 @@ class MindustryEnv(gym.Env):
         return obs, {}
 
     def step(
-        self, action: Dict[str, Any]
+        self, action: np.ndarray
     ) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
         if self._client is None:
             raise RuntimeError("Must call reset() before step()")
-        
-        action_type = int(action[0])
-        x = int(action[1])
-        y = int(action[2])
 
-        self._execute_action(action_type, x, y)
+        action_type = int(action[0])
+        arg = int(action[1])
+
+        self._execute_action(action_type, arg)
 
         state = self._client.receive_state()
         if state is None:
@@ -94,7 +102,8 @@ class MindustryEnv(gym.Env):
 
         obs = parse_observation(state)
         core_hp = float(state.get("core", {}).get("hp", 0.0))
-        terminated = core_hp <= 0.0
+        player_alive = bool(state.get("player", {}).get("alive", False))
+        terminated = core_hp <= 0.0 or not player_alive
         truncated = self._step_count >= self.max_steps
 
         reward = compute_reward(self._prev_state, state, done=terminated)
@@ -107,37 +116,20 @@ class MindustryEnv(gym.Env):
             self._client.close()
             self._client = None
 
-    def _execute_action(self, action_type: int, x: int, y: int) -> None:
+    def _execute_action(self, action_type: int, arg: int) -> None:
         if action_type == 0:
-            self._client.message("WAIT")
+            pass
         elif action_type == 1:
-            self._client.build(BLOCK_TURRET, x, y, rotation=0)
+            self._client.send_command(f"PLAYER_MOVE;{arg}")
         elif action_type == 2:
-            self._client.build(BLOCK_WALL, x, y, rotation=0)
+            self._client.send_command(f"PLAYER_BUILD;{BLOCK_TURRET};{arg}")
         elif action_type == 3:
-            self._client.build(BLOCK_POWER, x, y, rotation=0)
+            self._client.send_command(f"PLAYER_BUILD;{BLOCK_WALL};{arg}")
         elif action_type == 4:
-            self._client.repair(x, y)
+            self._client.send_command(f"PLAYER_BUILD;{BLOCK_POWER};{arg}")
         elif action_type == 5:
-            unit_id = self._get_first_friendly_id()
-            if unit_id is not None:
-                self._client.move_unit(unit_id, x, y)
+            self._client.send_command(f"PLAYER_BUILD;{BLOCK_DRILL};{arg}")
         elif action_type == 6:
-            unit_id = self._get_first_friendly_id()
-            if unit_id is not None:
-                self._client.attack(unit_id, x, y)
-        elif action_type == 7:
-            self._client.spawn_unit(x, y, unit_type="poly")
+            self._client.send_command(f"REPAIR_SLOT;{arg}")
         else:
-            raise ValueError(f"Invalid action_type: {action_type}. Must be 0-7")
-
-    def _get_first_friendly_id(self) -> Optional[int]:
-        if self._prev_state is None:
-            return None
-        units = self._prev_state.get("friendlyUnits", [])
-        if units:
-            unit_id = units[0].get("id")
-            if unit_id is None:
-                return None
-            return int(unit_id)
-        return None
+            raise ValueError(f"Invalid action_type: {action_type}. Must be 0-6")

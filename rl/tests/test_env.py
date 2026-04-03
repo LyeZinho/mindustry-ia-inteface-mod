@@ -9,7 +9,7 @@ MOCK_STATE = {
     "resources": {"copper": 100, "lead": 50, "graphite": 0, "titanium": 0, "thorium": 0},
     "power": {"produced": 10.0, "consumed": 5.0, "stored": 100, "capacity": 1000},
     "core": {"hp": 1.0, "x": 15, "y": 15, "size": 3},
-    "player": {"x": 15, "y": 15},
+    "player": {"x": 15, "y": 15, "alive": True, "hp": 1.0},
     "enemies": [],
     "friendlyUnits": [],
     "buildings": [],
@@ -19,7 +19,6 @@ MOCK_STATE = {
 
 
 def make_mock_client(states=None):
-    """Mock MimiClient returning predefined states."""
     client = MagicMock()
     if states is None:
         states = [MOCK_STATE, MOCK_STATE]
@@ -28,69 +27,126 @@ def make_mock_client(states=None):
 
 
 def test_reset_returns_valid_obs():
-    """reset() returns obs dict with correct shapes."""
     env = MindustryEnv(client=make_mock_client())
     obs, info = env.reset()
     assert "grid" in obs and "features" in obs
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (43,)
+    assert obs["features"].shape == (47,)
     assert isinstance(info, dict)
 
 
 def test_step_returns_five_tuple():
-    """step() returns (obs, reward, terminated, truncated, info)."""
     env = MindustryEnv(client=make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE]))
     env.reset()
-    action = np.array([0, 15, 15], dtype=np.int64)
+    action = np.array([0, 0], dtype=np.int64)  # WAIT, arg=0
     result = env.step(action)
     assert len(result) == 5
     obs, reward, terminated, truncated, info = result
     assert obs["grid"].shape == (4, 31, 31)
+    assert obs["features"].shape == (47,)
     assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
 
 
-def test_step_build_turret_sends_build_command():
-    """action_type=1 sends BUILD;duo;x;y;0."""
+def test_step_wait_does_not_send_movement():
+    """action_type=0 (WAIT) should not call send_command with PLAYER_MOVE."""
     client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
     env = MindustryEnv(client=client)
     env.reset()
-    action = np.array([1, 10, 12], dtype=np.int64)
+    action = np.array([0, 0], dtype=np.int64)
     env.step(action)
-    client.build.assert_called_with("duo", 10, 12, rotation=0)
+    for call in client.send_command.call_args_list:
+        assert not call[0][0].startswith("PLAYER_MOVE")
 
 
-def test_step_wait_sends_msg():
-    """action_type=0 (WAIT) sends message command."""
+def test_step_move_sends_player_move_command():
+    """action_type=1 sends PLAYER_MOVE;direction."""
     client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
     env = MindustryEnv(client=client)
     env.reset()
-    action = np.array([0, 0, 0], dtype=np.int64)
+    action = np.array([1, 3], dtype=np.int64)  # MOVE direction=3 (SE)
     env.step(action)
-    client.message.assert_any_call("WAIT")
+    client.send_command.assert_any_call("PLAYER_MOVE;3")
+
+
+def test_step_build_turret_sends_player_build():
+    """action_type=2 sends PLAYER_BUILD;duo;slot."""
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([2, 4], dtype=np.int64)  # BUILD_TURRET slot=4
+    env.step(action)
+    client.send_command.assert_any_call("PLAYER_BUILD;duo;4")
+
+
+def test_step_build_wall_sends_player_build():
+    """action_type=3 sends PLAYER_BUILD;copper-wall;slot."""
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([3, 0], dtype=np.int64)
+    env.step(action)
+    client.send_command.assert_any_call("PLAYER_BUILD;copper-wall;0")
+
+
+def test_step_build_power_sends_player_build():
+    """action_type=4 sends PLAYER_BUILD;solar-panel;slot."""
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([4, 1], dtype=np.int64)
+    env.step(action)
+    client.send_command.assert_any_call("PLAYER_BUILD;solar-panel;1")
+
+
+def test_step_build_drill_sends_player_build():
+    """action_type=5 sends PLAYER_BUILD;mechanical-drill;slot."""
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([5, 2], dtype=np.int64)
+    env.step(action)
+    client.send_command.assert_any_call("PLAYER_BUILD;mechanical-drill;2")
+
+
+def test_step_repair_sends_player_build_repair():
+    """action_type=6 sends REPAIR_SLOT;slot."""
+    client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
+    env = MindustryEnv(client=client)
+    env.reset()
+    action = np.array([6, 7], dtype=np.int64)
+    env.step(action)
+    client.send_command.assert_any_call("REPAIR_SLOT;7")
 
 
 def test_episode_terminates_on_core_destroyed():
-    """terminated=True when core hp <= 0."""
-    dead_state = {**MOCK_STATE, "core": {"hp": 0.0, "x": 15, "y": 15, "size": 3}}
+    dead_state = {**MOCK_STATE, "core": {"hp": 0.0, "x": 15, "y": 15, "size": 3},
+                  "player": {"x": 15, "y": 15, "alive": True, "hp": 1.0}}
     client = make_mock_client(states=[MOCK_STATE, dead_state])
     env = MindustryEnv(client=client)
     env.reset()
-    action = np.array([0, 0, 0], dtype=np.int64)
-    _, _, terminated, _, _ = env.step(action)
+    _, _, terminated, _, _ = env.step(np.array([0, 0], dtype=np.int64))
+    assert terminated is True
+
+
+def test_episode_terminates_on_player_dead():
+    dead_player_state = {**MOCK_STATE, "player": {"x": 0, "y": 0, "alive": False, "hp": 0.0}}
+    client = make_mock_client(states=[MOCK_STATE, dead_player_state])
+    env = MindustryEnv(client=client)
+    env.reset()
+    _, _, terminated, _, _ = env.step(np.array([0, 0], dtype=np.int64))
     assert terminated is True
 
 
 def test_episode_truncates_on_max_steps():
-    """truncated=True when step count >= max_steps."""
     from itertools import repeat
     states = list(repeat(MOCK_STATE, 12))
     client = MagicMock()
     client.receive_state.side_effect = states
     env = MindustryEnv(client=client, max_steps=5)
     env.reset()
-    action = np.array([0, 0, 0], dtype=np.int64)
+    action = np.array([0, 0], dtype=np.int64)
     for _ in range(4):
         _, _, terminated, truncated, _ = env.step(action)
     assert not truncated
