@@ -73,6 +73,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+from rl.env.spaces import ACTION_REGISTRY, _action_idx
+
 # ============================================================================
 # Curriculum Learning Framework (DISABLED BY DEFAULT)
 # ============================================================================
@@ -81,14 +83,14 @@ from typing import Any, Dict, Optional
 
 CURRICULUM_ENABLED = False
 
-# Action indices (from spaces.py)
-ACTION_WAIT = 0
-ACTION_MOVE = 1
-ACTION_BUILD_TURRET = 2
-ACTION_BUILD_WALL = 3
-ACTION_BUILD_POWER = 4
-ACTION_BUILD_DRILL = 5
-ACTION_REPAIR = 6
+# Action indices (derived from registry)
+ACTION_WAIT = _action_idx("WAIT")
+ACTION_MOVE = _action_idx("MOVE")
+ACTION_BUILD_TURRET = _action_idx("BUILD_TURRET")
+ACTION_BUILD_WALL = _action_idx("BUILD_WALL")
+ACTION_BUILD_POWER = _action_idx("BUILD_POWER")
+ACTION_BUILD_DRILL = _action_idx("BUILD_DRILL")
+ACTION_REPAIR = _action_idx("REPAIR")
 
 # Phases: (phase_name, timestep_range, allowed_actions)
 # Phase 0: Learn mining only (MOVE + BUILD_DRILL)
