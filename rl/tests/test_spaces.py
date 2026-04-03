@@ -34,13 +34,13 @@ def test_obs_space_shape():
     obs = make_obs_space()
     assert isinstance(obs, spaces.Dict)
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (79,)
+    assert obs["features"].shape == (83,)
 
 
 def test_parse_observation_returns_correct_shapes():
     obs = parse_observation(MINIMAL_STATE)
     assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (79,)
+    assert obs["features"].shape == (83,)
 
 
 def test_parse_observation_grid_dtype():
@@ -236,3 +236,52 @@ def test_pneumatic_drill_needs_graphite():
     }
     mask = compute_action_mask(state)
     assert mask[11] == False
+
+
+# ---- New 83-dim observation tests (Task 2) ---- #
+
+def test_obs_features_dim_is_83():
+    from rl.env.spaces import OBS_FEATURES_DIM
+    assert OBS_FEATURES_DIM == 83
+
+
+def test_obs_space_shape_is_83():
+    obs = make_obs_space()
+    assert obs["features"].shape == (83,)
+
+
+def test_parse_observation_shape_is_83():
+    obs = parse_observation(MINIMAL_STATE)
+    assert obs["features"].shape == (83,)
+
+
+def test_extended_resources_in_obs():
+    from rl.env.spaces import parse_observation, EXTENDED_RESOURCES
+    state = {
+        "tick": 1000, "time": 500, "wave": 3, "waveTime": 300,
+        "resources": {
+            "copper": 500, "lead": 200, "graphite": 100,
+            "titanium": 50, "thorium": 10, "coal": 30, "sand": 80,
+            "silicon": 150, "oil": 75, "water": 200, "metaglass": 40,
+        },
+        "power": {"produced": 120.5, "consumed": 80.2, "stored": 500, "capacity": 1000},
+        "core": {"hp": 0.95, "x": 15, "y": 15, "size": 3},
+        "player": {"x": 16, "y": 17, "alive": True, "hp": 0.8},
+        "enemies": [], "friendlyUnits": [], "buildings": [], "grid": [],
+        "nearbyOres": [], "nearbyEnemies": [],
+    }
+    obs = parse_observation(state)
+    assert obs["features"].shape == (83,)
+    assert obs["features"][79] == pytest.approx(150 / 1000.0)  # silicon
+    assert obs["features"][80] == pytest.approx(75  / 1000.0)  # oil
+    assert obs["features"][81] == pytest.approx(200 / 1000.0)  # water
+    assert obs["features"][82] == pytest.approx(40  / 1000.0)  # metaglass
+
+
+def test_extended_resources_zero_when_absent():
+    from rl.env.spaces import parse_observation
+    obs = parse_observation(MINIMAL_STATE)
+    assert obs["features"][79] == 0.0
+    assert obs["features"][80] == 0.0
+    assert obs["features"][81] == 0.0
+    assert obs["features"][82] == 0.0

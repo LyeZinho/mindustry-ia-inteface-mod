@@ -21,7 +21,8 @@ from gymnasium import spaces
 # ------------------------------------------------------------------ #
 
 GRID_SIZE = 31
-OBS_FEATURES_DIM = 79   # 1(core_hp) + 7(resources) + 4(power) + 1(wave) + 20(enemies) + 9(friendly) + 7(player/core) + 15(nearby_ores) + 15(nearby_enemies) = 79
+OBS_FEATURES_DIM = 83   # 1(core_hp)+7(res)+4(power)+1(wave)+20(enemies)+9(friendly)+7(player/core)+15(nearby_ores)+15(nearby_enemies)+4(ext_resources)=83
+EXTENDED_RESOURCES: list[str] = ["silicon", "oil", "water", "metaglass"]
 NUM_SLOTS = 9           # 3x3 relative grid around unit (also covers 8 directions + 0 for WAIT)
 MAX_ENEMIES = 5
 MAX_FRIENDLY = 3
@@ -194,6 +195,9 @@ def _parse_features(state: Dict[str, Any]) -> np.ndarray:
     feat[5] = res.get("thorium", 0.0) / 1000.0
     feat[6] = res.get("coal", 0.0) / 1000.0
     feat[7] = res.get("sand", 0.0) / 1000.0
+
+    for i, rname in enumerate(EXTENDED_RESOURCES):
+        feat[79 + i] = res.get(rname, 0.0) / 1000.0
 
     power = state.get("power", {})
     max_power = max(float(power.get("capacity", 1.0)), 1.0)
