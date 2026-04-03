@@ -1,0 +1,65 @@
+{
+  "timestamp": "2025-04-03T10:30:00.123456",
+  "policy": {
+    "action_type_distribution": [0.40, 0.20, 0.10, 0.10, 0.10, 0.05, 0.05],
+    "value_mean": 42.5,
+    "value_history": [40.1, 41.2, 42.0, 42.5],
+    "mask_ratio_blocked": 0.15,
+    "build_fail_rate": 0.08,
+    "build_fail_rate_history": [0.10, 0.09, 0.08]
+  },
+  "episode_metrics": {
+    "drills_built_total": 42,
+    "drill_build_frequency_pct": 15.5,
+    "penalty_a_count": 5,
+    "penalty_b_count": 3,
+    "penalty_frequency_pct": 8.0,
+    "action_dist": {
+      "WAIT": 0.40,
+      "MOVE": 0.20,
+      "BUILD_TURRET": 0.10,
+      "BUILD_WALL": 0.10,
+      "BUILD_POWER": 0.10,
+      "BUILD_DRILL": 0.05,
+      "REPAIR": 0.05
+    }
+  },
+  "world": {
+    "resources": {
+      "copper": 450.0,
+      "lead": 120.0,
+      "graphite": 75.0,
+      "titanium": 50.0,
+      "thorium": 0.0
+    },
+    "resource_deltas": {
+      "copper": 350.0,
+      "lead": 70.0,
+      "graphite": 75.0,
+      "titanium": 50.0,
+      "thorium": 0.0
+    },
+    "power": {
+      "produced": 120.5,
+      "consumed": 80.2,
+      "stored": 500.0,
+      "capacity": 1000.0
+    },
+    "power_history": [
+      {"produced": 100.0, "consumed": 70.0},
+      {"produced": 110.0, "consumed": 75.0},
+      {"produced": 120.5, "consumed": 80.2}
+    ],
+    "building_count": 15,
+    "unit_count": 3,
+    "building_history": [10, 12, 13, 15]
+  },
+  "pipeline": {
+    "step_latency_ms_mean": 5.2,
+    "step_latency_ms_std": 1.1,
+    "step_latency_history": [4.8, 5.1, 5.2, 5.3, 5.1]
+  },
+  "training": {
+    "total_timesteps": 102400
+  }
+}
