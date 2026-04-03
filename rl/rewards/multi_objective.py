@@ -171,13 +171,13 @@ def _detect_new_drills(prev_state: Dict[str, Any], curr_state: Dict[str, Any]) -
     prev_drills = {
         (b.get("x"), b.get("y"))
         for b in prev_state.get("buildings", [])
-        if b.get("block") == "drill"
+        if "drill" in b.get("block", "")
     }
 
     curr_drills = {
         (b.get("x"), b.get("y"))
         for b in curr_state.get("buildings", [])
-        if b.get("block") == "drill"
+        if "drill" in b.get("block", "")
     }
 
     return len(curr_drills - prev_drills)

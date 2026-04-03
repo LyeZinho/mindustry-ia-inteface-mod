@@ -319,7 +319,7 @@ def test_full_compute_reward_integration():
         "power": {"produced": 100, "consumed": 50},
         "buildings": [
             {"block": "wall", "x": 0, "y": 0},
-            {"block": "drill", "x": 5, "y": 5},  # New drill!
+            {"block": "mechanical-drill", "x": 5, "y": 5},  # New drill!
         ],
         "player": {"alive": True},
         "inventory": {},
