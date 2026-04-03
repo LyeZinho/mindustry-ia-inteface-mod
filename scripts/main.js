@@ -905,6 +905,14 @@ function init() {
     Log.info("[Mimi Gateway] Intervalo de atualização: " + config.updateInterval + " ticks");
     Log.info("==============================================");
     
+    // Spectator mode: any human player who joins is set to Team.derelict
+    Events.on(EventType.PlayerJoin.class, event => {
+        let p = event.player;
+        p.team(Team.derelict);
+        Call.sendMessage("[yellow][Mimi AI] Você entrou como espectador. Aproveite o treinamento!");
+        Log.info("[Mimi Gateway] Player " + p.name + " set to spectator (Team.derelict)");
+    });
+    
     startSocketServer();
 }
 
