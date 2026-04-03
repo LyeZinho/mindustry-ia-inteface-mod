@@ -15,6 +15,7 @@ import argparse
 import signal
 import shutil
 from pathlib import Path
+from typing import Callable
 
 from stable_baselines3 import A2C
 
@@ -33,7 +34,7 @@ def _install_mod(mod_zip: str, server_data_dir: str) -> None:
     print(f"Mod installed: {dest}")
 
 
-def _make_env_factory(host: str, tcp_port: int, max_steps: int, maps):
+def _make_env_factory(host: str, tcp_port: int, max_steps: int, maps) -> Callable:
     """Return a zero-arg callable that constructs one MindustryEnv (for SubprocVecEnv)."""
     def _factory():
         from rl.env.mindustry_env import MindustryEnv

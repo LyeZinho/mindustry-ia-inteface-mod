@@ -1,6 +1,5 @@
 """Tests for train.py argument parsing and env factory."""
 import pytest
-from unittest.mock import patch, MagicMock
 from rl.train import parse_args, _make_env_factory
 
 
