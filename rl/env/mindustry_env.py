@@ -120,7 +120,7 @@ class MindustryEnv(gym.Env):
         if action_type == 0:
             pass
         elif action_type == 1:
-            self._client.send_command(f"PLAYER_MOVE;{arg}")
+            self._client.send_command(f"PLAYER_MOVE;{arg % 8}")
         elif action_type == 2:
             self._client.send_command(f"PLAYER_BUILD;{BLOCK_TURRET};{arg}")
         elif action_type == 3:
