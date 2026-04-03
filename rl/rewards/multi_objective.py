@@ -1,13 +1,17 @@
 """
-Multi-objective reward function for the Mindustry RL agent.
+Multi-objective reward function for the Mindustry RL player agent.
 
-reward = 0.50 * core_hp_delta
+reward = 0.40 * core_hp_delta
        + 0.20 * wave_survived_bonus
-       + 0.15 * resources_delta / 500
-       + 0.15 * friendly_units_ratio
+       + 0.10 * resources_delta / 500
+       + 0.10 * power_balance_bonus
+       + 0.10 * build_efficiency_bonus
+       + 0.10 * player_alive_bonus
        - 0.001  (time penalty)
 
-Terminal: -1.0 if core_destroyed.
+Terminal penalties:
+  core destroyed        → -1.0
+  player dead, core ok  → -0.5
 """
 from __future__ import annotations
 
@@ -28,25 +32,41 @@ def compute_reward(
     wave_survived_bonus = 1.0 if curr_wave > prev_wave else 0.0
 
     def _total_resources(state: Dict[str, Any]) -> float:
-        res = state.get("resources", {})
-        return sum(float(v) for v in res.values())
+        return sum(float(v) for v in state.get("resources", {}).values())
 
     resources_delta = _total_resources(curr_state) - _total_resources(prev_state)
 
-    friendly = curr_state.get("friendlyUnits", [])
-    enemies = curr_state.get("enemies", [])
-    total_units = len(friendly) + len(enemies)
-    friendly_ratio = len(friendly) / total_units if total_units > 0 else 0.0
+    power = curr_state.get("power", {})
+    produced = float(power.get("produced", 0.0))
+    consumed = float(power.get("consumed", 0.0))
+    if produced > 0:
+        power_balance_bonus = max(0.0, min(1.0, (produced - consumed) / produced))
+    else:
+        power_balance_bonus = 0.0
+
+    prev_buildings = len(prev_state.get("buildings", []))
+    curr_buildings = len(curr_state.get("buildings", []))
+    new_buildings = max(0, curr_buildings - prev_buildings)
+    build_efficiency_bonus = min(1.0, new_buildings * 0.1)
+
+    player_alive = bool(curr_state.get("player", {}).get("alive", False))
+    core_destroyed = curr_hp <= 0.0
+    player_alive_bonus = 1.0 if (player_alive and not core_destroyed) else 0.0
 
     reward = (
-        0.50 * core_hp_delta
+        0.40 * core_hp_delta
         + 0.20 * wave_survived_bonus
-        + 0.15 * (resources_delta / 500.0)  # 500 ≈ core storage capacity; normalises to ~[-1, 1]
-        + 0.15 * friendly_ratio
+        + 0.10 * (resources_delta / 500.0)
+        + 0.10 * power_balance_bonus
+        + 0.10 * build_efficiency_bonus
+        + 0.10 * player_alive_bonus
         - 0.001
     )
 
-    if done and curr_hp <= 0.0:
-        reward -= 1.0
+    if done:
+        if curr_hp <= 0.0:
+            reward -= 1.0
+        elif not player_alive:
+            reward -= 0.5
 
     return float(reward)

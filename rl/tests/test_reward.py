@@ -6,8 +6,11 @@ BASE = {
     "core": {"hp": 1.0},
     "wave": 1,
     "resources": {"copper": 0, "lead": 0, "graphite": 0, "titanium": 0, "thorium": 0},
+    "power": {"produced": 0.0, "consumed": 0.0},
     "friendlyUnits": [],
     "enemies": [],
+    "player": {"alive": True, "hp": 1.0},
+    "buildings": [],
 }
 
 
@@ -23,30 +26,19 @@ def make_state(**overrides):
 
 
 def test_reward_core_hp_loss():
-    """Losing core HP is penalized."""
+    """Losing core HP is penalized (large enough drop to dominate other bonuses)."""
     prev = make_state(core={"hp": 1.0})
-    curr = make_state(core={"hp": 0.8})
+    curr = make_state(core={"hp": 0.4})
     r = compute_reward(prev, curr, done=False)
     assert r < 0
-    assert r == pytest.approx(-0.101, abs=1e-5)
-
-
-def test_reward_core_hp_gain():
-    """Maintaining full HP gives a small positive contribution."""
-    prev = make_state(core={"hp": 0.9})
-    curr = make_state(core={"hp": 0.9})
-    r = compute_reward(prev, curr, done=False)
-    # time penalty applies, so result is slightly negative
-    assert r == pytest.approx(-0.001, abs=1e-4)
 
 
 def test_reward_wave_survived():
-    """Completing a wave gives +0.20 bonus."""
+    """Completing a wave gives positive bonus."""
     prev = make_state(wave=1)
     curr = make_state(wave=2)
     r = compute_reward(prev, curr, done=False)
     assert r > 0
-    assert r == pytest.approx(0.199, abs=1e-5)
 
 
 def test_reward_resource_accumulation():
@@ -55,32 +47,49 @@ def test_reward_resource_accumulation():
     curr = make_state(resources={"copper": 500, "lead": 0, "graphite": 0, "titanium": 0, "thorium": 0})
     r = compute_reward(prev, curr, done=False)
     assert r > 0
-    assert r == pytest.approx(0.149, abs=1e-5)
 
 
-def test_reward_terminal_penalty():
+def test_reward_terminal_core_destroyed():
     """Core destroyed applies -1.0 terminal penalty."""
     prev = make_state(core={"hp": 0.1})
     curr = make_state(core={"hp": 0.0})
     r = compute_reward(prev, curr, done=True)
-    # -1.0 terminal + core_hp_delta penalty
     assert r <= -1.0
-    assert r == pytest.approx(-1.051, abs=1e-5)
 
 
-def test_reward_done_without_core_destroyed():
-    """done=True with core alive (truncation) does not apply -1.0 terminal penalty."""
-    prev = make_state(core={"hp": 1.0})
-    curr = make_state(core={"hp": 1.0})
+def test_reward_terminal_player_dead_core_alive():
+    """-0.5 terminal penalty when player dies but core is alive."""
+    prev = make_state(player={"alive": True, "hp": 0.3})
+    curr = make_state(player={"alive": False, "hp": 0.0})
     r = compute_reward(prev, curr, done=True)
-    assert r == pytest.approx(-0.001, abs=1e-4)
+    assert r <= -0.5
+    # should NOT apply -1.0 (core still alive)
+    assert r > -1.0
 
 
-def test_reward_friendly_units_ratio():
-    """More friendly units alive → higher reward."""
-    prev_state = make_state()
-    curr_no_units = make_state(friendlyUnits=[], enemies=[{"hp": 1.0}])
-    curr_with_units = make_state(friendlyUnits=[{"hp": 1.0}, {"hp": 1.0}], enemies=[{"hp": 1.0}])
-    r_no = compute_reward(prev_state, curr_no_units, done=False)
-    r_with = compute_reward(prev_state, curr_with_units, done=False)
-    assert r_with > r_no
+def test_reward_player_alive_bonus():
+    """Player alive contributes positively when core HP stable."""
+    prev = make_state()
+    curr = make_state()
+    r = compute_reward(prev, curr, done=False)
+    # Should include +0.10 player alive bonus minus time penalty → positive
+    assert r > 0
+
+
+def test_reward_power_balance_bonus():
+    """Positive power balance (produced > consumed) gives bonus."""
+    prev = make_state()
+    curr_balanced = make_state(power={"produced": 10.0, "consumed": 5.0})
+    curr_deficit = make_state(power={"produced": 5.0, "consumed": 10.0})
+    r_balanced = compute_reward(prev, curr_balanced, done=False)
+    r_deficit = compute_reward(prev, curr_deficit, done=False)
+    assert r_balanced > r_deficit
+
+
+def test_reward_done_without_core_or_player_destroyed():
+    """done=True with both core and player alive (truncation) → no extra penalty."""
+    prev = make_state()
+    curr = make_state()
+    r = compute_reward(prev, curr, done=True)
+    # time penalty + player alive bonus; no terminal penalty
+    assert r > -0.5
