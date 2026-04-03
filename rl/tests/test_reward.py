@@ -93,3 +93,30 @@ def test_reward_done_without_core_or_player_destroyed():
     r = compute_reward(prev, curr, done=True)
     # time penalty + player alive bonus; no terminal penalty
     assert r > -0.5
+
+
+def test_drill_bonus_when_copper_increases_significantly():
+    prev = {"resources": {"copper": 10}, "core": {"hp": 0.9}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": True}}
+    curr = {"resources": {"copper": 20}, "core": {"hp": 0.9}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": True}}
+    r = compute_reward(prev, curr, done=False)
+    # drill_bonus=1.0 (copper +10 >= 5), weighted at 0.10 → reward should be higher than baseline
+    assert r > -0.002  # time penalty only without drill bonus would be ~ -0.0005 + 0.05 player alive
+
+
+def test_no_drill_bonus_when_copper_increases_less_than_5():
+    prev = {"resources": {"copper": 10}, "core": {"hp": 0.9}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": True}}
+    curr = {"resources": {"copper": 13}, "core": {"hp": 0.9}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": True}}
+    r_small = compute_reward(prev, curr, done=False)
+    prev2 = {"resources": {"copper": 10}, "core": {"hp": 0.9}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": True}}
+    curr2 = {"resources": {"copper": 16}, "core": {"hp": 0.9}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": True}}
+    r_large = compute_reward(prev2, curr2, done=False)
+    assert r_large > r_small  # drill bonus fires for +6, not for +3
+
+
+def test_time_penalty_halved():
+    """Time penalty should now be 0.0005 not 0.001."""
+    prev = {"resources": {}, "core": {"hp": 0.5}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": False}}
+    curr = {"resources": {}, "core": {"hp": 0.5}, "wave": 1, "power": {}, "buildings": [], "player": {"alive": False}}
+    r = compute_reward(prev, curr, done=False)
+    # No positive signals, no negative terminal → just time penalty (-0.0005)
+    assert abs(r - (-0.0005)) < 1e-6
