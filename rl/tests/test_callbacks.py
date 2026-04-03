@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from rl.callbacks.training_callbacks import _write_metrics_json, LiveMetricsCallback
+from rl.env.spaces import NUM_ACTION_TYPES
 
 
 def test_write_metrics_json_creates_file(tmp_path):
@@ -186,7 +187,7 @@ def test_compute_metrics_edge_case_zero_steps(tmp_path):
     assert metrics["episode_metrics"]["penalty_b_count"] == 0
     assert metrics["episode_metrics"]["penalty_frequency_pct"] == 0.0
     action_dist = metrics["episode_metrics"]["action_dist"]
-    assert all(abs(v - 1.0/7) < 1e-6 for v in action_dist.values())
+    assert all(abs(v - 1.0/NUM_ACTION_TYPES) < 1e-6 for v in action_dist.values())
     assert abs(sum(action_dist.values()) - 1.0) < 1e-6
 
 
@@ -211,5 +212,5 @@ def test_compute_metrics_edge_case_no_actions(tmp_path):
     
     assert "episode_metrics" in metrics
     action_dist = metrics["episode_metrics"]["action_dist"]
-    assert all(abs(v - 1.0/7) < 1e-6 for v in action_dist.values())
+    assert all(abs(v - 1.0/NUM_ACTION_TYPES) < 1e-6 for v in action_dist.values())
     assert abs(sum(action_dist.values()) - 1.0) < 1e-6

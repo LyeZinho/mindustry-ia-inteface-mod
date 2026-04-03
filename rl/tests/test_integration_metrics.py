@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from rl.env.mindustry_env import MindustryEnv
+from rl.env.spaces import NUM_ACTION_TYPES
 from rl.callbacks.training_callbacks import LiveMetricsCallback, _write_metrics_json
 from rl.dashboard import (
     _draw_drill_rate_total,
@@ -183,7 +184,7 @@ def test_metrics_pipeline_end_to_end(tmp_path):
     assert isinstance(episode_metrics["penalty_b_count"], int)
     assert 0 <= episode_metrics["penalty_frequency_pct"] <= 100
     assert isinstance(episode_metrics["action_dist"], dict)
-    assert len(episode_metrics["action_dist"]) == 7
+    assert len(episode_metrics["action_dist"]) == NUM_ACTION_TYPES
     
     # 10. Action distribution sums to ~1.0 (floating point)
     action_dist_sum = sum(episode_metrics["action_dist"].values())

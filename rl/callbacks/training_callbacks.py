@@ -20,6 +20,8 @@ from stable_baselines3.common.callbacks import (
     CheckpointCallback,
 )
 
+from rl.env.spaces import ACTION_NAMES, NUM_ACTION_TYPES
+
 
 def _write_metrics_json(path: Path, metrics: Dict[str, Any]) -> None:
     """Atomically write metrics dict to JSON using temp-file rename."""
@@ -158,7 +160,6 @@ class LiveMetricsCallback(BaseCallback):
 
     def _compute_episode_metrics(self) -> Dict[str, Any]:
         """Aggregate drill, penalty, and action metrics from episode infos."""
-        ACTION_NAMES = ["WAIT", "MOVE", "BUILD_TURRET", "BUILD_WALL", "BUILD_POWER", "BUILD_DRILL", "REPAIR"]
         num_steps = len(self._episode_infos)
         
         drills_built_total = sum(info.get("drills_built_this_step", 0) for info in self._episode_infos)
@@ -168,17 +169,17 @@ class LiveMetricsCallback(BaseCallback):
         penalty_b_count = sum(1 for info in self._episode_infos if info.get("penalty_b_triggered", False))
         penalty_frequency_pct = ((penalty_a_count + penalty_b_count) / num_steps * 100) if num_steps > 0 else 0.0
         
-        action_counts = [0] * 7
+        action_counts = [0] * NUM_ACTION_TYPES
         for info in self._episode_infos:
             action_idx = info.get("action_taken_index")
-            if action_idx is not None and 0 <= action_idx < 7:
+            if action_idx is not None and 0 <= action_idx < NUM_ACTION_TYPES:
                 action_counts[action_idx] += 1
         
         total_actions = sum(action_counts)
         if total_actions > 0:
             action_dist = {name: count / total_actions for name, count in zip(ACTION_NAMES, action_counts)}
         else:
-            action_dist = {name: 1.0 / 7 for name in ACTION_NAMES}
+            action_dist = {name: 1.0 / NUM_ACTION_TYPES for name in ACTION_NAMES}
         
         return {
             "drills_built_total": int(drills_built_total),
@@ -195,7 +196,7 @@ class LiveMetricsCallback(BaseCallback):
             actions = buf.actions.reshape(-1, buf.actions.shape[-1]).astype(int)
             action_types = actions[:, 0]
             action_type_dist = (
-                np.bincount(action_types, minlength=7) / max(len(action_types), 1)
+                np.bincount(action_types, minlength=NUM_ACTION_TYPES) / max(len(action_types), 1)
             ).tolist()
             values = buf.values.flatten()
             value_mean = float(np.mean(values))
@@ -221,7 +222,7 @@ class LiveMetricsCallback(BaseCallback):
             }
         except Exception:
             return {
-                "action_type_distribution": [1 / 7] * 7,
+                "action_type_distribution": [1 / NUM_ACTION_TYPES] * NUM_ACTION_TYPES,
                 "value_mean": 0.0,
                 "value_history": self._value_history[-50:],
                 "mask_ratio_blocked": 0.0,
