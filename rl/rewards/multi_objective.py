@@ -136,6 +136,40 @@ def _detect_action_repetition_penalty(
     return 0.0
 
 
+def _detect_resource_bleeding_penalty(
+    prev_state: Dict[str, Any],
+    curr_state: Dict[str, Any],
+    bleeding_threshold: float = -10.0,
+) -> float:
+    """
+    Penalize building structures that cost more resources than collected.
+
+    If buildings increased BUT total resources decreased significantly,
+    the agent is making expensive, unproductive builds. Penalize this behavior.
+
+    Args:
+        prev_state: Game state at t-1
+        curr_state: Game state at t
+        bleeding_threshold: If resources_delta < this, apply penalty (default -10)
+
+    Returns:
+        Penalty (negative) or 0.0
+    """
+    prev_buildings = len(prev_state.get("buildings", []))
+    curr_buildings = len(curr_state.get("buildings", []))
+    new_buildings = curr_buildings - prev_buildings
+
+    def _total_resources(state: Dict[str, Any]) -> float:
+        return sum(float(v) for v in state.get("resources", {}).values())
+
+    resources_delta = _total_resources(curr_state) - _total_resources(prev_state)
+
+    if new_buildings > 0 and resources_delta < bleeding_threshold:
+        return -0.10
+
+    return 0.0
+
+
 def compute_reward(
     prev_state: Dict[str, Any],
     curr_state: Dict[str, Any],
@@ -207,6 +241,8 @@ def compute_reward(
         resources_delta=resources_delta,
     )
 
+    inactivity_penalty_b = _detect_resource_bleeding_penalty(prev_state, curr_state)
+
     reward = (
         0.30 * core_hp_delta
         + 0.20 * wave_survived_bonus
@@ -220,6 +256,7 @@ def compute_reward(
         + 1.00 * delivery_bonus
         - 0.002
         + inactivity_penalty_a
+        + inactivity_penalty_b
     )
 
     if done:

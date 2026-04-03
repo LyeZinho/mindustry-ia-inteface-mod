@@ -209,3 +209,58 @@ def test_no_penalty_if_history_is_none():
 
     penalty = _detect_action_repetition_penalty(None, resources_delta=0.0)
     assert penalty == 0.0
+
+
+def test_no_penalty_if_built_and_gained_resources():
+    """Positive trade: built something and resources increased."""
+    from rl.rewards.multi_objective import _detect_resource_bleeding_penalty
+
+    prev = {"buildings": [{"block": "wall", "x": 0, "y": 0}], "resources": {"copper": 100}}
+    curr = {"buildings": [{"block": "wall", "x": 0, "y": 0}, {"block": "drill", "x": 5, "y": 5}], "resources": {"copper": 150}}
+
+    penalty = _detect_resource_bleeding_penalty(prev, curr)
+    assert penalty == 0.0
+
+
+def test_penalty_if_built_but_resources_dropped():
+    """Negative trade: built something but resources dropped >10."""
+    from rl.rewards.multi_objective import _detect_resource_bleeding_penalty
+
+    prev = {"buildings": [{"block": "wall", "x": 0, "y": 0}], "resources": {"copper": 100}}
+    curr = {"buildings": [{"block": "wall", "x": 0, "y": 0}, {"block": "turret", "x": 5, "y": 5}], "resources": {"copper": 80}}
+
+    penalty = _detect_resource_bleeding_penalty(prev, curr, bleeding_threshold=-10.0)
+    assert penalty == -0.10
+
+
+def test_no_penalty_if_resources_dropped_but_no_new_buildings():
+    """Resources dropped, but didn't build anything (not the agent's fault)."""
+    from rl.rewards.multi_objective import _detect_resource_bleeding_penalty
+
+    prev = {"buildings": [{"block": "wall", "x": 0, "y": 0}], "resources": {"copper": 100}}
+    curr = {"buildings": [{"block": "wall", "x": 0, "y": 0}], "resources": {"copper": 80}}
+
+    penalty = _detect_resource_bleeding_penalty(prev, curr)
+    assert penalty == 0.0
+
+
+def test_no_penalty_if_small_resource_drop():
+    """Resources dropped slightly (less than threshold), not severe."""
+    from rl.rewards.multi_objective import _detect_resource_bleeding_penalty
+
+    prev = {"buildings": [{"block": "wall", "x": 0, "y": 0}], "resources": {"copper": 100}}
+    curr = {"buildings": [{"block": "wall", "x": 0, "y": 0}, {"block": "wall", "x": 5, "y": 5}], "resources": {"copper": 95}}
+
+    penalty = _detect_resource_bleeding_penalty(prev, curr, bleeding_threshold=-10.0)
+    assert penalty == 0.0
+
+
+def test_multiple_resources_totaled():
+    """Resource delta includes all items (copper + lead + graphite, etc)."""
+    from rl.rewards.multi_objective import _detect_resource_bleeding_penalty
+
+    prev = {"buildings": [{"block": "wall", "x": 0, "y": 0}], "resources": {"copper": 100, "lead": 50}}
+    curr = {"buildings": [{"block": "wall", "x": 0, "y": 0}, {"block": "turret", "x": 5, "y": 5}], "resources": {"copper": 80, "lead": 30}}
+
+    penalty = _detect_resource_bleeding_penalty(prev, curr, bleeding_threshold=-10.0)
+    assert penalty == -0.10  # Total delta: (80-100) + (30-50) = -40, which is < -10
