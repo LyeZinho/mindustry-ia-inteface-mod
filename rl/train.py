@@ -120,9 +120,7 @@ def main() -> None:
             jar_path=args.server_jar,
             mod_zip=args.mod_zip,
         )
-        for i in range(args.n_envs):
-            servers[i].send_stdin("host")
-        print(f"All servers ready. Observe at localhost:6567 (instance 0)")
+        print(f"All servers ready. Game starts on first RESET from env.")
 
     try:
         if args.n_envs == 1:

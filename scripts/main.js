@@ -12,12 +12,17 @@ const config = {
     debug: true
 };
 
-// Read TCP port from mimi_port.txt if present (used for multi-instance training)
+// Read TCP port from mimi_port.txt if present (used for multi-instance training).
+// Use java.io.File with a relative path so it resolves against the server's working
+// directory (set per-instance by the Python manager), NOT Vars.dataDirectory which
+// always points to the global Mindustry data dir (~/.local/share/Mindustry).
 (function() {
     try {
-        let portFile = Vars.dataDirectory.child("mimi_port.txt");
+        let portFile = new java.io.File("mimi_port.txt");
         if (portFile.exists()) {
-            let portStr = portFile.readString().trim();
+            let scanner = new java.util.Scanner(portFile).useDelimiter("\\A");
+            let portStr = scanner.hasNext() ? scanner.next().trim() : "";
+            scanner.close();
             let parsed = parseInt(portStr);
             if (!isNaN(parsed) && parsed > 0) {
                 config.port = parsed;
