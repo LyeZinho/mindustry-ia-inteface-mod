@@ -87,8 +87,14 @@ def build_figure():
 
 def make_updater(axes, csv_path: str, window: int):
     """Return the FuncAnimation update callable."""
+    _last_df: list[pd.DataFrame] = [pd.DataFrame(columns=["r", "l", "t"])]
+
     def update(_frame):
-        df = load_monitor_csv_path(Path(csv_path))
+        try:
+            df = load_monitor_csv_path(Path(csv_path))
+            _last_df[0] = df
+        except Exception:
+            df = _last_df[0]
         stats = compute_stats(df, window)
 
         # --- Reward panel ---
