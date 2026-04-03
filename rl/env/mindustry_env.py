@@ -16,6 +16,7 @@ action_type:
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
@@ -36,6 +37,10 @@ DEFAULT_TRAINING_MAPS = [
     "Glacier", "Islands", "Labyrinth", "Maze", "Molten Lake", "Mud Flats",
     "Passage", "Shattered", "Tendrils", "Triad", "Veins", "Wasteland",
 ]
+
+
+_MAX_RESET_RETRIES = 5
+_RESET_BACKOFF = 2.0
 
 
 class MindustryEnv(gym.Env):
@@ -71,29 +76,47 @@ class MindustryEnv(gym.Env):
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
         super().reset(seed=seed)
 
-        if self._client is None:
-            self._client = MimiClient(self._host, self._port)
-
         map_name = self._maps[self._map_index % len(self._maps)]
         self._map_index += 1
 
-        try:
-            self._client.send_command(f"RESET;{map_name}")
-            state = self._client.receive_state()
-        except OSError:
-            _log.warning("Stale connection on reset; reconnecting to %s:%s", self._host, self._port)
-            self._client.close()
-            self._client = MimiClient(self._host, self._port)
-            self._client.send_command(f"RESET;{map_name}")
-            state = self._client.receive_state()
+        backoff = _RESET_BACKOFF
+        last_exc: Optional[Exception] = None
 
-        if state is None:
-            raise RuntimeError("Failed to receive initial state from Mindustry server")
-        self._prev_state = state
-        self._step_count = 0
+        for attempt in range(1, _MAX_RESET_RETRIES + 1):
+            try:
+                if self._client is None:
+                    self._client = MimiClient(self._host, self._port)
 
-        obs = parse_observation(state)
-        return obs, {}
+                self._client.send_command(f"RESET;{map_name}")
+                state = self._client.receive_state()
+
+                if state is None:
+                    raise OSError("Server returned EOF after RESET")
+
+                self._prev_state = state
+                self._step_count = 0
+                return parse_observation(state), {}
+
+            except OSError as exc:
+                last_exc = exc
+                _log.warning(
+                    "reset() attempt %d/%d failed: %s",
+                    attempt, _MAX_RESET_RETRIES, exc,
+                )
+                try:
+                    if self._client is not None:
+                        self._client.close()
+                except OSError:
+                    pass
+                self._client = None
+
+                if attempt < _MAX_RESET_RETRIES:
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 30.0)
+
+        raise RuntimeError(
+            f"Failed to reset after {_MAX_RESET_RETRIES} attempts: {last_exc}"
+        )
 
     def step(
         self, action: np.ndarray

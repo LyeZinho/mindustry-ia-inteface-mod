@@ -11,9 +11,14 @@ from __future__ import annotations
 import json
 import logging
 import socket
+import time
 from typing import Any, Dict, Optional
 
 _log = logging.getLogger(__name__)
+
+_MAX_CONNECT_RETRIES = 10
+_INITIAL_BACKOFF = 1.0
+_MAX_BACKOFF = 30.0
 
 
 class MimiClient:
@@ -27,10 +32,33 @@ class MimiClient:
         if _sock is not None:
             self._sock = _sock
         else:
-            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._sock.settimeout(timeout)
-            self._sock.connect((host, port))
+            self._sock = self._connect_with_retry(host, port, timeout)
         self._file = self._sock.makefile("r", encoding="utf-8")
+
+    @staticmethod
+    def _connect_with_retry(
+        host: str, port: int, timeout: float
+    ) -> socket.socket:
+        backoff = _INITIAL_BACKOFF
+        for attempt in range(1, _MAX_CONNECT_RETRIES + 1):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            try:
+                sock.connect((host, port))
+                if attempt > 1:
+                    _log.info("Connected to %s:%s on attempt %d", host, port, attempt)
+                return sock
+            except OSError as exc:
+                sock.close()
+                if attempt == _MAX_CONNECT_RETRIES:
+                    raise
+                _log.warning(
+                    "Connect to %s:%s failed (attempt %d/%d): %s — retrying in %.1fs",
+                    host, port, attempt, _MAX_CONNECT_RETRIES, exc, backoff,
+                )
+                time.sleep(backoff)
+                backoff = min(backoff * 2, _MAX_BACKOFF)
+        raise RuntimeError("unreachable")
 
     def receive_state(self) -> Optional[Dict[str, Any]]:
         line = self._file.readline()
