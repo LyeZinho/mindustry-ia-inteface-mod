@@ -80,6 +80,8 @@ class LiveMetricsCallback(BaseCallback):
         self._episode_infos: List[Dict[str, Any]] = []
 
     def _on_rollout_start(self) -> None:
+        if self.training_env is not None:
+            self.training_env.set_attr("_global_timestep", self.num_timesteps)
         self._resources_at_rollout_start = dict(self._last_resources)
         self._rollout_build_fails = 0
         self._episode_infos = []

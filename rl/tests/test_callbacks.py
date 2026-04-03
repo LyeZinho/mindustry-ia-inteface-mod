@@ -214,3 +214,16 @@ def test_compute_metrics_edge_case_no_actions(tmp_path):
     action_dist = metrics["episode_metrics"]["action_dist"]
     assert all(abs(v - 1.0/NUM_ACTION_TYPES) < 1e-6 for v in action_dist.values())
     assert abs(sum(action_dist.values()) - 1.0) < 1e-6
+
+
+def test_callback_sets_global_timestep_on_rollout(tmp_path):
+    """Test that _on_rollout_start propagates num_timesteps to training envs via set_attr."""
+    cb = _make_callback(tmp_path)
+
+    mock_env = MagicMock()
+    cb.model.get_env.return_value = mock_env
+    cb.num_timesteps = 75000
+
+    cb._on_rollout_start()
+
+    mock_env.set_attr.assert_called_with("_global_timestep", 75000)
