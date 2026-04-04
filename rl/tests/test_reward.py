@@ -318,7 +318,7 @@ def test_curriculum_disabled_allows_all_actions():
     mo.CURRICULUM_ENABLED = False
     try:
         mask = apply_curriculum_action_mask(timestep=0)
-        assert len(mask) == 12
+        assert len(mask) == 13
         assert all(mask)
     finally:
         mo.CURRICULUM_ENABLED = orig
@@ -440,7 +440,7 @@ def test_conveyor_connectivity_bonus_not_fired_for_isolated_conveyor():
 def test_curriculum_phase0_allows_only_3_actions():
     from rl.rewards.multi_objective import apply_curriculum_action_mask
     mask = apply_curriculum_action_mask(timestep=10000)
-    assert len(mask) == 12
+    assert len(mask) == 13
     assert mask[0] is True
     assert mask[1] is True
     assert mask[5] is True
@@ -467,7 +467,7 @@ def test_curriculum_phase3_all_actions():
     from rl.rewards.multi_objective import apply_curriculum_action_mask
     mask = apply_curriculum_action_mask(timestep=700000)
     assert all(mask)
-    assert len(mask) == 12
+    assert len(mask) == 13
 
 
 def test_curriculum_disabled_returns_all_true():
@@ -476,7 +476,7 @@ def test_curriculum_disabled_returns_all_true():
     mo.CURRICULUM_ENABLED = False
     try:
         mask = mo.apply_curriculum_action_mask(timestep=0)
-        assert len(mask) == 12
+        assert len(mask) == 13
         assert all(mask)
     finally:
         mo.CURRICULUM_ENABLED = orig

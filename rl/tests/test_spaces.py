@@ -34,13 +34,13 @@ def test_obs_space_shape():
     obs = make_obs_space()
     assert isinstance(obs, spaces.Dict)
     assert obs["grid"].shape == (8, 31, 31)
-    assert obs["features"].shape == (121,)
+    assert obs["features"].shape == (122,)
 
 
 def test_parse_observation_returns_correct_shapes():
     obs = parse_observation(MINIMAL_STATE)
     assert obs["grid"].shape == (8, 31, 31)
-    assert obs["features"].shape == (121,)
+    assert obs["features"].shape == (122,)
 
 
 def test_parse_observation_grid_dtype():
@@ -175,7 +175,7 @@ def test_action_mask_partial_resources():
 def test_num_action_types_matches_registry():
     from rl.env.spaces import ACTION_REGISTRY, NUM_ACTION_TYPES
     assert NUM_ACTION_TYPES == len(ACTION_REGISTRY)
-    assert NUM_ACTION_TYPES == 12
+    assert NUM_ACTION_TYPES == 13
 
 
 def test_action_names_length_matches_num_action_types():
@@ -242,17 +242,17 @@ def test_pneumatic_drill_needs_graphite():
 
 def test_obs_features_dim_is_83():
     from rl.env.spaces import OBS_FEATURES_DIM
-    assert OBS_FEATURES_DIM == 121
+    assert OBS_FEATURES_DIM == 122
 
 
 def test_obs_space_shape_is_83():
     obs = make_obs_space()
-    assert obs["features"].shape == (121,)
+    assert obs["features"].shape == (122,)
 
 
 def test_parse_observation_shape_is_83():
     obs = parse_observation(MINIMAL_STATE)
-    assert obs["features"].shape == (121,)
+    assert obs["features"].shape == (122,)
 
 
 def test_extended_resources_in_obs():
@@ -271,7 +271,7 @@ def test_extended_resources_in_obs():
         "nearbyOres": [], "nearbyEnemies": [],
     }
     obs = parse_observation(state)
-    assert obs["features"].shape == (121,)
+    assert obs["features"].shape == (122,)
     assert obs["features"][79] == pytest.approx(150 / 1000.0)  # silicon
     assert obs["features"][80] == pytest.approx(75  / 1000.0)  # oil
     assert obs["features"][81] == pytest.approx(200 / 1000.0)  # water
@@ -289,7 +289,7 @@ def test_extended_resources_zero_when_absent():
 
 def test_obs_features_dim_is_92():
     from rl.env.spaces import OBS_FEATURES_DIM
-    assert OBS_FEATURES_DIM == 121
+    assert OBS_FEATURES_DIM == 122
 
 
 def test_ore_in_slot_parsed_from_slots_ore_type():
@@ -303,7 +303,7 @@ def test_ore_in_slot_parsed_from_slots_ore_type():
     }
     obs = parse_observation(state)
     feats = obs["features"]
-    assert len(feats) == 121
+    assert len(feats) == 122
     assert abs(feats[83] - 1/7) < 1e-5
     assert feats[84] == 0.0
     assert abs(feats[85] - 2/7) < 1e-5
@@ -326,18 +326,18 @@ def test_opt_signals_populate_features():
         "defense_gap": 0.7,
         "wave_threat_index": 0.2,
         "build_order_priority": np.full(5, 0.4, dtype=np.float32),
-        "lookahead_scores": np.full(12, 0.6, dtype=np.float32),
+        "lookahead_scores": np.full(13, 0.6, dtype=np.float32),
     }
     state = {"core": {}, "resources": {}, "power": {}, "player": {}}
     obs = parse_observation(state, opt_signals=opt)
     feats = obs["features"]
-    assert feats.shape == (121,)
+    assert feats.shape == (122,)
     assert all(abs(feats[92:101] - 0.5) < 1e-5)
     assert abs(feats[101] - 0.3) < 1e-5
     assert abs(feats[102] - 0.7) < 1e-5
     assert abs(feats[103] - 0.2) < 1e-5
     assert all(abs(feats[104:109] - 0.4) < 1e-5)
-    assert all(abs(feats[109:121] - 0.6) < 1e-5)
+    assert all(abs(feats[109:122] - 0.6) < 1e-5)
 
 
 def test_build_drill_mask_matches_mod_cost():
@@ -362,3 +362,17 @@ def test_build_drill_mask_matches_mod_cost():
     # Lead and graphite are NOT required
     assert drill_def.mask_fn({"copper": 12, "lead": 0, "graphite": 0}) is True, \
         "BUILD_DRILL should not require lead or graphite"
+
+
+
+def test_delete_action_in_registry():
+    from rl.env.spaces import ACTION_REGISTRY, ACTION_DELETE, NUM_ACTION_TYPES
+    assert ACTION_REGISTRY[ACTION_DELETE].name == "DELETE"
+    assert ACTION_REGISTRY[ACTION_DELETE].block is None
+    assert NUM_ACTION_TYPES == 13
+
+
+def test_delete_action_mask_fn_always_true():
+    from rl.env.spaces import ACTION_REGISTRY, ACTION_DELETE
+    assert ACTION_REGISTRY[ACTION_DELETE].mask_fn({}) is True
+    assert ACTION_REGISTRY[ACTION_DELETE].mask_fn({"copper": 0}) is True

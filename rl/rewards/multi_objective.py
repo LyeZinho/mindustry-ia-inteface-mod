@@ -107,7 +107,7 @@ CURRICULUM_PHASES = [
         ACTION_BUILD_POWER, ACTION_BUILD_WALL, ACTION_BUILD_TURRET,
         ACTION_REPAIR, ACTION_BUILD_GRAPHITE_PRESS, ACTION_BUILD_COMBUSTION_GEN,
     ]),
-    ("full", (600_000, float('inf')), list(range(12))),
+    ("full", (600_000, float('inf')), list(range(13))),
 ]
 
 # ============================================================================

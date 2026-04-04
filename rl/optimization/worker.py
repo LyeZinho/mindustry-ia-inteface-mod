@@ -46,7 +46,7 @@ class OptimizationWorker(threading.Thread):
         self._pending_state = None
         self._result = {
             "placement_scores": np.zeros(9, dtype=np.float32),
-            "lookahead_scores": np.zeros(12, dtype=np.float32),
+            "lookahead_scores": np.zeros(13, dtype=np.float32),
             "defense_gap": 1.0,
             "power_deficit": 0.0,
             "build_order_priority": np.zeros(5, dtype=np.float32),

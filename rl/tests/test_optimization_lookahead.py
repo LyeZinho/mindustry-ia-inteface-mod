@@ -16,7 +16,7 @@ BASE_STATE = {
 
 def test_lookahead_scores_shape():
     scores = compute_lookahead_scores(BASE_STATE)
-    assert scores.shape == (12,)
+    assert scores.shape == (13,)
 
 def test_lookahead_scores_non_negative():
     scores = compute_lookahead_scores(BASE_STATE)

@@ -11,7 +11,7 @@ def test_extractor_output_shape():
     extractor = MindustryFeatureExtractor(obs_space, features_dim=256)
     batch = {
         "grid": torch.zeros(2, 8, 31, 31),
-        "features": torch.zeros(2, 121),
+        "features": torch.zeros(2, 122),
     }
     with torch.no_grad():
         out = extractor(batch)
@@ -26,7 +26,7 @@ def test_extractor_no_nan():
     extractor = MindustryFeatureExtractor(obs_space)
     batch = {
         "grid": torch.rand(4, 8, 31, 31),
-        "features": torch.rand(4, 121),
+        "features": torch.rand(4, 122),
     }
     with torch.no_grad():
         out = extractor(batch)
@@ -51,7 +51,7 @@ def test_multi_head_policy_instantiates():
             return {k: np.zeros(v.shape, dtype=np.float32) for k, v in self.observation_space.items()}, 0.0, False, False, {}
 
         def action_masks(self):
-            return np.ones(21, dtype=bool)
+            return np.ones(22, dtype=bool)
 
     env = _DummyEnv()
     model = MaskablePPO(MindustryActorCriticPolicy, env, verbose=0)
@@ -76,10 +76,10 @@ def test_multi_head_policy_predict():
             return {k: np.zeros(v.shape, dtype=np.float32) for k, v in self.observation_space.items()}, 0.0, False, False, {}
 
         def action_masks(self):
-            return np.ones(21, dtype=bool)
+            return np.ones(22, dtype=bool)
 
     env = _DummyEnv()
     model = MaskablePPO(MindustryActorCriticPolicy, env, verbose=0)
     obs = {k: np.zeros(v.shape, dtype=np.float32) for k, v in env.observation_space.items()}
-    action, _ = model.predict(obs, action_masks=np.ones(21, dtype=bool))
+    action, _ = model.predict(obs, action_masks=np.ones(22, dtype=bool))
     assert action is not None

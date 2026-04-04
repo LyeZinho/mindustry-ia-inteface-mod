@@ -40,4 +40,4 @@ def test_worker_result_shapes():
     result = w.get_result()
     w.stop()
     assert len(result["placement_scores"]) == 9
-    assert len(result["lookahead_scores"]) == 12
+    assert len(result["lookahead_scores"]) == 13

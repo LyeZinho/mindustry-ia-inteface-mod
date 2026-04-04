@@ -33,7 +33,7 @@ def test_reset_returns_valid_obs():
     obs, info = env.reset()
     assert "grid" in obs and "features" in obs
     assert obs["grid"].shape == (8, 31, 31)
-    assert obs["features"].shape == (121,)
+    assert obs["features"].shape == (122,)
     assert isinstance(info, dict)
 
 
@@ -45,7 +45,7 @@ def test_step_returns_five_tuple():
     assert len(result) == 5
     obs, reward, terminated, truncated, info = result
     assert obs["grid"].shape == (8, 31, 31)
-    assert obs["features"].shape == (121,)
+    assert obs["features"].shape == (122,)
     assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
@@ -201,14 +201,14 @@ def test_action_masks_returns_correct_shape():
     env = MindustryEnv(client=client)
     env.reset()
     mask = env.action_masks()
-    assert mask.shape == (21,)
+    assert mask.shape == (22,)
     assert mask.dtype == np.bool_
 
 
 def test_action_masks_before_reset_returns_all_true():
     env = MindustryEnv(client=MagicMock())
     mask = env.action_masks()
-    assert mask.shape == (21,)
+    assert mask.shape == (22,)
     assert np.all(mask)
 
 

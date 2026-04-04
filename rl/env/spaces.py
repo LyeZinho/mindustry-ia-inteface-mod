@@ -11,7 +11,7 @@ Observation: Dict with two tensors:
     ch5: power coverage heatmap
     ch6: build score heatmap
     ch7: rotation
-  "features": float32 (121,) — MLP input
+    "features": float32 (122,) — MLP input
     0:      core_hp
     1-7:    resources (copper,lead,graphite,titanium,thorium,coal,sand) / 1000
     8-11:   power (produced,consumed,stored,capacity normalized)
@@ -30,11 +30,11 @@ Observation: Dict with two tensors:
     102:    defense_gap (from opt worker)
     103:    wave_threat_index (from opt worker)
     104-108: build_order_priority[0..4] (from opt worker)
-    109-120: lookahead_scores[0..11] (from opt worker)
+    109-121: lookahead_scores[0..12] (from opt worker)
 
-Action: MultiDiscrete([12, 9])
-  action[0]: action_type  ∈ {0..11} (WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR, BUILD_CONVEYOR, BUILD_GRAPHITE_PRESS, BUILD_SILICON_SMELTER, BUILD_COMBUSTION_GEN, BUILD_PNEUMATIC_DRILL)
-  action[1]: arg          ∈ {0..8}  (direction 0-7 for MOVE; relative slot 0-8 for build/repair; ignored for WAIT)
+Action: MultiDiscrete([13, 9])
+  action[0]: action_type  ∈ {0..12} (WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR, BUILD_CONVEYOR, BUILD_GRAPHITE_PRESS, BUILD_SILICON_SMELTER, BUILD_COMBUSTION_GEN, BUILD_PNEUMATIC_DRILL, DELETE)
+  action[1]: arg          ∈ {0..8}  (direction 0-7 for MOVE; relative slot 0-8 for build/repair/delete; ignored for WAIT)
 """
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ from gymnasium import spaces
 
 GRID_SIZE = 31
 GRID_CHANNELS = 8       # ch0:block ch1:hp ch2:team ch3:ore ch4:threat ch5:power ch6:build_score ch7:rotation
-OBS_FEATURES_DIM = 121  # 92 existing + 9(placement) + 1(power_deficit) + 1(defense_gap) + 1(wave_threat) + 5(build_order) + 12(lookahead) = 121
+OBS_FEATURES_DIM = 122  # 92 existing + 9(placement) + 1(power_deficit) + 1(defense_gap) + 1(wave_threat) + 5(build_order) + 13(lookahead) = 122
 EXTENDED_RESOURCES: list[str] = ["silicon", "oil", "water", "metaglass"]
 NUM_SLOTS = 9           # 3x3 relative grid around unit (also covers 8 directions + 0 for WAIT)
 MAX_ENEMIES = 5
@@ -101,6 +101,7 @@ ACTION_REGISTRY: list[ActionDef] = [
     ActionDef("BUILD_SILICON_SMELTER","silicon-smelter",       lambda r: r.get("copper", 0) >= 30 and r.get("lead", 0) >= 30),
     ActionDef("BUILD_COMBUSTION_GEN","combustion-generator",   lambda r: r.get("copper", 0) >= 25 and r.get("lead", 0) >= 15),
     ActionDef("BUILD_PNEUMATIC_DRILL","pneumatic-drill",       lambda r: r.get("copper", 0) >= 12 and r.get("graphite", 0) >= 10),
+    ActionDef("DELETE",              None,                     lambda r: True),
 ]
 
 NUM_ACTION_TYPES: int = len(ACTION_REGISTRY)
@@ -115,6 +116,7 @@ def _action_idx(name: str) -> int:
 ACTION_WAIT   = _action_idx("WAIT")
 ACTION_MOVE   = _action_idx("MOVE")
 ACTION_REPAIR = _action_idx("REPAIR")
+ACTION_DELETE = _action_idx("DELETE")
 
 BLOCK_TURRET = ACTION_REGISTRY[_action_idx("BUILD_TURRET")].block
 BLOCK_WALL   = ACTION_REGISTRY[_action_idx("BUILD_WALL")].block
@@ -390,8 +392,8 @@ def _parse_features(
         feat[103] = float(np.clip(opt_signals.get("wave_threat_index", 0.0), 0.0, 1.0))
         bop = opt_signals.get("build_order_priority", np.zeros(5, dtype=np.float32))
         feat[104:109] = np.clip(bop, 0.0, 1.0)
-        lookahead = opt_signals.get("lookahead_scores", np.zeros(12, dtype=np.float32))
-        feat[109:121] = np.clip(lookahead, 0.0, 1.0)
+        lookahead = opt_signals.get("lookahead_scores", np.zeros(NUM_ACTION_TYPES, dtype=np.float32))
+        feat[109:122] = np.clip(lookahead, 0.0, 1.0)
 
     return feat
 
