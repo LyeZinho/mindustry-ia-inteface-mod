@@ -486,6 +486,121 @@ def _draw_defense_gap(ax, metrics_history: list) -> None:
         ax.set_ylim(0, 1.1)
 
 
+def _draw_drill_rate_total(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Drills Construídos (total)", "Episódio")
+    vals = [m.get("episode_metrics", {}).get("drills_built_total", 0) for m in metrics_history]
+    if vals:
+        ax.plot(list(range(len(vals))), vals, color=_PALETTE["green"], linewidth=1.5)
+    else:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+
+
+def _draw_drill_rate_frequency(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Drill Build Frequency (%)", "Episódio")
+    vals = [m.get("episode_metrics", {}).get("drill_build_frequency_pct", 0.0) for m in metrics_history]
+    if vals:
+        ax.plot(list(range(len(vals))), vals, color=_PALETTE["teal"], linewidth=1.5)
+        ax.set_ylim(0, 100)
+    else:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+
+
+def _draw_penalty_counts(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Penalizações (contagem)", "Episódio")
+    a_vals = [m.get("episode_metrics", {}).get("penalty_a_count", 0) for m in metrics_history]
+    b_vals = [m.get("episode_metrics", {}).get("penalty_b_count", 0) for m in metrics_history]
+    if a_vals or b_vals:
+        xs = list(range(max(len(a_vals), len(b_vals))))
+        ax.plot(xs[:len(a_vals)], a_vals, color=_PALETTE["red"], linewidth=1.5, label="Penalty A")
+        ax.plot(xs[:len(b_vals)], b_vals, color=_PALETTE["yellow"], linewidth=1.5, label="Penalty B")
+        ax.legend(fontsize=6, labelcolor=_PALETTE["text"], facecolor=_PALETTE["bg_fig"])
+    else:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+
+
+def _draw_penalty_frequency(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Penalty Frequency (%)", "Episódio")
+    vals = [m.get("episode_metrics", {}).get("penalty_frequency_pct", 0.0) for m in metrics_history]
+    if vals:
+        ax.plot(list(range(len(vals))), vals, color=_PALETTE["peach"], linewidth=1.5)
+        ax.set_ylim(0, 100)
+    else:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+
+
+def _draw_action_dist_per_episode(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Action Dist (last episode)")
+    if not metrics_history:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    dist = metrics_history[-1].get("episode_metrics", {}).get("action_dist", {})
+    if not dist:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    keys = list(dist.keys())
+    vals = [dist[k] for k in keys]
+    colors = [_PALETTE["blue"], _PALETTE["green"], _PALETTE["red"], _PALETTE["purple"],
+              _PALETTE["yellow"], _PALETTE["teal"], _PALETTE["peach"]][:len(keys)]
+    ax.bar(keys, vals, color=colors[:len(keys)], edgecolor=_PALETTE["bg_fig"], width=0.6)
+    ax.tick_params(axis="x", labelsize=6)
+    ax.set_ylim(0, 1.0)
+
+
+def _draw_action_dist_rolling(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Action Dist Rolling (pie, últimos 10 ep)")
+    window = metrics_history[-10:] if len(metrics_history) >= 10 else metrics_history
+    if not window:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    combined: Dict[str, float] = {}
+    for m in window:
+        dist = m.get("episode_metrics", {}).get("action_dist", {})
+        for k, v in dist.items():
+            combined[k] = combined.get(k, 0.0) + float(v)
+    if not combined:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    keys = list(combined.keys())
+    vals = [combined[k] for k in keys]
+    total = sum(vals)
+    if total > 0:
+        vals = [v / total for v in vals]
+    pie_colors = [_PALETTE["blue"], _PALETTE["green"], _PALETTE["red"], _PALETTE["purple"],
+                  _PALETTE["yellow"], _PALETTE["teal"], _PALETTE["peach"]][:len(keys)]
+    ax.pie(vals, labels=keys, colors=pie_colors[:len(keys)],
+           textprops={"color": _PALETTE["text"], "fontsize": 6},
+           startangle=90)
+
+
+def _draw_extended_resources(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Extended Resources (silicon/oil/water)")
+    extended_keys = ["silicon", "oil", "water", "metaglass"]
+    if not metrics_history:
+        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+    for key, color in zip(extended_keys, [_PALETTE["blue"], _PALETTE["peach"], _PALETTE["teal"], _PALETTE["green"]]):
+        vals = [m.get("world", {}).get("resources", {}).get(key, 0.0) for m in metrics_history]
+        if any(v > 0 for v in vals):
+            ax.plot(list(range(len(vals))), vals, color=color, linewidth=1.2, label=key)
+    ax.legend(fontsize=6, labelcolor=_PALETTE["text"], facecolor=_PALETTE["bg_fig"])
+
+
 def _draw_stats(ax, stats: Dict[str, Any], metrics: Dict[str, Any], window: int) -> None:
     ax.cla()
     ax.axis("off")
