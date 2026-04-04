@@ -287,8 +287,9 @@ def test_step_info_tracks_action_taken_and_step_count():
 def test_action_history_includes_current_action_in_reward():
     """Current action must be in history when reward is computed (Bug 3 fix).
 
-    With 2 prior WAITs in history and a 3rd WAIT as current action,
+    With 6 prior WAITs in history and a 7th WAIT as current action,
     penalty_a should fire on THIS step (not the next).
+    min_history_len=7 (raised from 3 to reduce false positives from navigation).
     """
     mock_state = {
         "core": {"hp": 1.0, "x": 5, "y": 5, "size": 3},
@@ -306,14 +307,14 @@ def test_action_history_includes_current_action_in_reward():
 
     env = MindustryEnv(client=client)
     env._prev_state = mock_state
-    env._action_history = [0, 0]  # Two prior WAITs already in history
+    env._action_history = [0, 0, 0, 0, 0, 0]  # Six prior WAITs already in history
 
-    # Third WAIT — penalty_a should fire on THIS step (current action in history)
+    # Seventh WAIT — penalty_a should fire on THIS step (current action in history)
     action = np.array([0, 0])  # WAIT
     _, _, _, _, info = env.step(action)
 
     assert info["penalty_a_triggered"] == 1, (
-        "penalty_a should fire on the 3rd WAIT when current action is in history"
+        "penalty_a should fire on the 7th WAIT when current action is in history"
     )
 
 
