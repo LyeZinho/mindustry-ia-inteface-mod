@@ -177,6 +177,17 @@ _NUM_KNOWN_BLOCKS = len(BLOCK_IDS) + 1  # +1 for "unknown"
 SLOT_DX = [-1,  0,  1, -1,  0,  1, -1,  0,  1]
 SLOT_DY = [ 1,  1,  1,  0,  0,  0, -1, -1, -1]
 
+BLOCK_SIZE_2X2: frozenset[str] = frozenset({
+    "mechanical-drill", "pneumatic-drill", "duo",
+    "graphite-press", "silicon-smelter", "combustion-generator",
+})
+
+
+def _footprint(tx: int, ty: int, block: str | None) -> list[tuple[int, int]]:
+    if block in BLOCK_SIZE_2X2:
+        return [(tx, ty), (tx + 1, ty), (tx, ty + 1), (tx + 1, ty + 1)]
+    return [(tx, ty)]
+
 # Direction (0-7) for MOVE: N/NE/E/SE/S/SW/W/NW
 MOVE_DIR_DX = [0, 1, 1,  1,  0, -1, -1, -1]
 MOVE_DIR_DY = [1, 1, 0, -1, -1, -1,  0,  1]
@@ -463,6 +474,9 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
             ore_set.add((ore_x, ore_y))
 
     # Get player position to compute slot coordinates
+    map_w = int(state.get("mapWidth", 0)) or None
+    map_h = int(state.get("mapHeight", 0)) or None
+
     player_x = int(player.get("x", 0)) if player else 0
     player_y = int(player.get("y", 0)) if player else 0
 
@@ -495,19 +509,45 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
             for slot in range(NUM_SLOTS):
                 target_x = player_x + SLOT_DX[slot]
                 target_y = player_y + SLOT_DY[slot]
-                block_at_target = grid_dict.get((target_x, target_y), "air")
-                is_building_at_target = (target_x, target_y) in buildings_set
-                
-                # Mask slot if target tile is occupied (not air in grid OR has building OR in blockedTiles)
-                if block_at_target != "air" or is_building_at_target or (target_x, target_y) in blocked_set:
-                    slot_mask_idx = NUM_ACTION_TYPES + slot
-                    mask[slot_mask_idx] = False
-                
-                # For drill actions, additionally mask slots without ore
+                fp = _footprint(target_x, target_y, action.block)
+
+                if map_w is not None and map_h is not None:
+                    if any(fx < 0 or fx >= map_w or fy < 0 or fy >= map_h for fx, fy in fp):
+                        mask[NUM_ACTION_TYPES + slot] = False
+                        continue
+
+                occupied = any(
+                    grid_dict.get((fx, fy), "air") != "air"
+                    or (fx, fy) in buildings_set
+                    or (fx, fy) in blocked_set
+                    for fx, fy in fp
+                )
+                if occupied:
+                    mask[NUM_ACTION_TYPES + slot] = False
+
                 if i in (ACTION_BUILD_DRILL, ACTION_BUILD_PNEUMATIC_DRILL):
-                    if (target_x, target_y) not in ore_set:
-                        slot_mask_idx = NUM_ACTION_TYPES + slot
-                        mask[slot_mask_idx] = False
+                    if not any((fx, fy) in ore_set for fx, fy in fp):
+                        mask[NUM_ACTION_TYPES + slot] = False
+
+    for drill_action in (ACTION_BUILD_DRILL, ACTION_BUILD_PNEUMATIC_DRILL):
+        if not mask[drill_action]:
+            continue
+        drill_block = ACTION_REGISTRY[drill_action].block
+        has_valid_slot = False
+        for slot in range(NUM_SLOTS):
+            tx = player_x + SLOT_DX[slot]
+            ty = player_y + SLOT_DY[slot]
+            fp = _footprint(tx, ty, drill_block)
+            if any((fx, fy) in ore_set for fx, fy in fp) and not any(
+                grid_dict.get((fx, fy), "air") != "air"
+                or (fx, fy) in buildings_set
+                or (fx, fy) in blocked_set
+                for fx, fy in fp
+            ):
+                has_valid_slot = True
+                break
+        if not has_valid_slot:
+            mask[drill_action] = False
 
     if mask[ACTION_DELETE]:
         ally_demolishable = {

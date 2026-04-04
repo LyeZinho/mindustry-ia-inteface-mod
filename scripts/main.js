@@ -305,6 +305,8 @@ function captureGameState() {
         time: Vars.state.tick,
         wave: Vars.state.wave,
         waveTime: Vars.state.wavetime,
+        mapWidth: Vars.world.width(),
+        mapHeight: Vars.world.height(),
         resources: {},
         inventory: {}, // Track current inventory for mining detection
         power: { produced: 0, consumed: 0, stored: 0, capacity: 0 },

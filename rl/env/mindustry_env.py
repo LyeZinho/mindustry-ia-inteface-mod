@@ -36,7 +36,7 @@ from rl.env.spaces import (
     compute_action_mask, NUM_ACTION_TYPES, NUM_SLOTS,
     ACTION_REGISTRY, ACTION_WAIT, ACTION_MOVE, ACTION_REPAIR, ACTION_DELETE,
     BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER, BLOCK_DRILL,
-    SLOT_DX, SLOT_DY, GRID_SIZE,
+    SLOT_DX, SLOT_DY, GRID_SIZE, _footprint,
 )
 from rl.rewards.multi_objective import compute_reward, _detect_new_drills
 from rl.optimization.worker import OptimizationWorker
@@ -348,8 +348,7 @@ class MindustryEnv(gym.Env):
         if 0 <= action_type < len(ACTION_REGISTRY):
             block = ACTION_REGISTRY[action_type].block
             if block is not None:
-                # Validate target tile is free before sending BUILD command
-                if not self._is_build_target_free(arg):
+                if not self._is_build_target_free(arg, block):
                     _log.debug(
                         "Skipping BUILD %s at slot %d: target tile occupied",
                         block, arg
@@ -359,45 +358,42 @@ class MindustryEnv(gym.Env):
                 self._client.send_command(f"PLAYER_BUILD;{block};{arg};{rotation}")
                 return
         raise ValueError(f"Invalid action_type: {action_type}")
-    
-    def _is_build_target_free(self, slot: int) -> bool:
-        """Check if target tile for build slot is free (block == 'air' and no building)."""
+
+    def _is_build_target_free(self, slot: int, block: str | None = None) -> bool:
         if self._prev_state is None:
             return True
-        
+
         player = self._prev_state.get("player", {})
         if not player.get("alive", False):
             return False
-        
+
         player_x = int(player.get("x", 0))
         player_y = int(player.get("y", 0))
         target_x = player_x + SLOT_DX[slot % NUM_SLOTS]
         target_y = player_y + SLOT_DY[slot % NUM_SLOTS]
-        
-        # Check if target tile has a block (not air)
-        grid = self._prev_state.get("grid", [])
-        for tile in grid:
-            if int(tile.get("x", 0)) == target_x and int(tile.get("y", 0)) == target_y:
-                block = tile.get("block", "air")
-                if block != "air":
-                    return False
-        
-        # Check if any building occupies the target position
-        buildings = self._prev_state.get("buildings", [])
-        for building in buildings:
-            bx = int(building.get("x", 0))
-            by = int(building.get("y", 0))
-            if bx == target_x and by == target_y:
-                return False
 
-        # Check blockedTiles (solid terrain, non-air blocks reported by mod)
+        fp = _footprint(target_x, target_y, block)
+
+        grid = self._prev_state.get("grid", [])
+        grid_dict = {
+            (int(t.get("x", 0)), int(t.get("y", 0))): t.get("block", "air")
+            for t in grid
+        }
+
+        buildings_set = {
+            (int(b.get("x", 0)), int(b.get("y", 0)))
+            for b in self._prev_state.get("buildings", [])
+        }
+
         blocked_set = {
             (int(e[0]), int(e[1]))
             for e in self._prev_state.get("blockedTiles", [])
             if isinstance(e, (list, tuple)) and len(e) >= 2
         }
-        if (target_x, target_y) in blocked_set:
-            return False
 
-        # Tile not in grid and no building = free to build
-        return True
+        return not any(
+            grid_dict.get((fx, fy), "air") != "air"
+            or (fx, fy) in buildings_set
+            or (fx, fy) in blocked_set
+            for fx, fy in fp
+        )

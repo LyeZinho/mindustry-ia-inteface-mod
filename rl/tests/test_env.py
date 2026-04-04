@@ -14,9 +14,14 @@ MOCK_STATE = {
     "friendlyUnits": [],
     "buildings": [],
     "actionFailed": False,
-    "grid": [],  # Empty grid (sparse format)
+    "grid": [],
     "nearbyOres": [],
     "nearbyEnemies": [],
+    "oreGrid": [
+        [14, 16, 1], [15, 16, 1], [16, 16, 1],
+        [14, 15, 1], [15, 15, 1], [16, 15, 1],
+        [14, 14, 1], [15, 14, 1], [16, 14, 1],
+    ],
 }
 
 

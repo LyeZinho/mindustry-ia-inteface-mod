@@ -89,40 +89,40 @@ def _style_ax(ax, title: str, xlabel: str = "") -> None:
 
 
 def build_figure():
-    fig = plt.figure(figsize=(18, 22), facecolor=_PALETTE["bg_fig"])
+    fig = plt.figure(figsize=(18, 26), facecolor=_PALETTE["bg_fig"])
     try:
         fig.canvas.manager.set_window_title("Mindustry RL — Training Dashboard")
     except Exception:
         pass
 
     gs = gridspec.GridSpec(
-        6, 3,
+        7, 3,
         figure=fig,
         hspace=0.60,
         wspace=0.40,
-        height_ratios=[2.5, 2.5, 2.0, 2.0, 2.0, 0.5],
+        height_ratios=[2.5, 2.5, 2.5, 2.0, 2.0, 2.0, 0.5],
     )
 
     ax_reward   = fig.add_subplot(gs[0, 0])
     ax_length   = fig.add_subplot(gs[0, 1])
     ax_hist     = fig.add_subplot(gs[0, 2])
 
-    ax_3d       = fig.add_subplot(gs[1, 0], projection="3d")
-    ax_critic   = fig.add_subplot(gs[1, 1])
-    ax_mask     = fig.add_subplot(gs[1, 2])
+    ax_3d       = fig.add_subplot(gs[1:3, 0:2], projection="3d")
+    ax_critic   = fig.add_subplot(gs[1, 2])
+    ax_mask     = fig.add_subplot(gs[2, 2])
 
-    ax_power    = fig.add_subplot(gs[2, 0])
-    ax_latency  = fig.add_subplot(gs[2, 1])
-    ax_counts   = fig.add_subplot(gs[2, 2])
+    ax_power    = fig.add_subplot(gs[3, 0])
+    ax_latency  = fig.add_subplot(gs[3, 1])
+    ax_counts   = fig.add_subplot(gs[3, 2])
 
-    ax_resources      = fig.add_subplot(gs[3, 0:2])
-    ax_stability      = fig.add_subplot(gs[3, 2])
+    ax_resources      = fig.add_subplot(gs[4, 0:2])
+    ax_stability      = fig.add_subplot(gs[4, 2])
 
-    ax_lookahead      = fig.add_subplot(gs[4, 0])
-    ax_placement      = fig.add_subplot(gs[4, 1])
-    ax_defense_gap    = fig.add_subplot(gs[4, 2])
+    ax_lookahead      = fig.add_subplot(gs[5, 0])
+    ax_placement      = fig.add_subplot(gs[5, 1])
+    ax_defense_gap    = fig.add_subplot(gs[5, 2])
 
-    ax_stats    = fig.add_subplot(gs[5, :])
+    ax_stats    = fig.add_subplot(gs[6, :])
     ax_stats.axis("off")
 
     axes = {

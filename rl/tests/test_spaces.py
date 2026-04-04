@@ -18,9 +18,14 @@ MINIMAL_STATE = {
     "enemies": [],
     "friendlyUnits": [],
     "buildings": [],
-    "grid": [],  # Empty grid (sparse format)
+    "grid": [],
     "nearbyOres": [],
     "nearbyEnemies": [],
+    "oreGrid": [
+        [15, 18, 1], [16, 18, 1], [17, 18, 1],
+        [15, 17, 1], [16, 17, 1], [17, 17, 1],
+        [15, 16, 1], [16, 16, 1], [17, 16, 1],
+    ],
 }
 
 
@@ -213,6 +218,7 @@ def test_new_action_masks_with_resources():
         "enemies": [], "friendlyUnits": [],
         "buildings": [{"block": "duo", "hp": 0.5}],
         "grid": [], "nearbyOres": [], "nearbyEnemies": [],
+        "oreGrid": [[15, 18, 1]],
     }
     mask = compute_action_mask(rich_state)
     assert mask[7]  == True
@@ -448,20 +454,17 @@ def test_drill_masked_when_no_ore_at_slot():
     target_x = px + SLOT_DX[slot]
     target_y = py + SLOT_DY[slot]
     
-    # State with NO ore at target slot
     state = {
         "player": {"x": px, "y": py, "alive": True},
         "resources": {"copper": 100},
         "buildings": [],
         "grid": [],
         "blockedTiles": [],
-        "oreGrid": [],  # No ores
+        "oreGrid": [],
     }
-    
+
     mask = compute_action_mask(state)
-    # Drill action type should be enabled (resources available)
-    assert bool(mask[ACTION_BUILD_DRILL]) == True
-    # But slot 4 should be masked (no ore)
+    assert bool(mask[ACTION_BUILD_DRILL]) == False
     assert bool(mask[NUM_ACTION_TYPES + slot]) == False
 
 
@@ -474,20 +477,17 @@ def test_pneumatic_drill_masked_when_no_ore_at_slot():
     target_x = px + SLOT_DX[slot]
     target_y = py + SLOT_DY[slot]
     
-    # State with NO ore at target slot
     state = {
         "player": {"x": px, "y": py, "alive": True},
         "resources": {"copper": 100, "graphite": 50},
         "buildings": [],
         "grid": [],
         "blockedTiles": [],
-        "oreGrid": [],  # No ores
+        "oreGrid": [],
     }
-    
+
     mask = compute_action_mask(state)
-    # Pneumatic drill action type should be enabled (resources available)
-    assert bool(mask[ACTION_BUILD_PNEUMATIC_DRILL]) == True
-    # But slot 4 should be masked (no ore)
+    assert bool(mask[ACTION_BUILD_PNEUMATIC_DRILL]) == False
     assert bool(mask[NUM_ACTION_TYPES + slot]) == False
 
 
@@ -515,3 +515,95 @@ def test_drill_allowed_when_ore_present_at_slot():
     assert bool(mask[ACTION_BUILD_DRILL]) == True
     # Slot 4 should NOT be masked (ore present)
     assert bool(mask[NUM_ACTION_TYPES + slot]) == True
+
+
+def test_footprint_returns_single_tile_for_1x1_block():
+    from rl.env.spaces import _footprint
+    assert _footprint(5, 7, "copper-wall") == [(5, 7)]
+    assert _footprint(5, 7, None) == [(5, 7)]
+
+
+def test_footprint_returns_four_tiles_for_2x2_block():
+    from rl.env.spaces import _footprint
+    result = _footprint(3, 4, "mechanical-drill")
+    assert set(result) == {(3, 4), (4, 4), (3, 5), (4, 5)}
+
+
+def test_drill_masked_when_adjacent_tile_in_footprint_blocked():
+    from rl.env.spaces import (
+        compute_action_mask, ACTION_BUILD_DRILL, NUM_ACTION_TYPES, SLOT_DX, SLOT_DY,
+    )
+    px, py = 10, 10
+    slot = 4
+    target_x = px + SLOT_DX[slot]
+    target_y = py + SLOT_DY[slot]
+    state = {
+        "player": {"x": px, "y": py, "alive": True},
+        "resources": {"copper": 100},
+        "buildings": [],
+        "grid": [],
+        "blockedTiles": [[target_x + 1, target_y]],
+        "oreGrid": [[target_x, target_y, 1]],
+    }
+    mask = compute_action_mask(state)
+    assert bool(mask[NUM_ACTION_TYPES + slot]) == False
+
+
+def test_drill_action_type_masked_when_all_slots_have_no_ore():
+    from rl.env.spaces import (
+        compute_action_mask, ACTION_BUILD_DRILL, ACTION_BUILD_PNEUMATIC_DRILL,
+    )
+    state = {
+        "player": {"x": 10, "y": 10, "alive": True},
+        "resources": {"copper": 100, "graphite": 50},
+        "buildings": [],
+        "grid": [],
+        "blockedTiles": [],
+        "oreGrid": [],
+    }
+    mask = compute_action_mask(state)
+    assert bool(mask[ACTION_BUILD_DRILL]) == False
+    assert bool(mask[ACTION_BUILD_PNEUMATIC_DRILL]) == False
+
+
+def test_drill_action_type_enabled_when_at_least_one_slot_has_ore():
+    from rl.env.spaces import (
+        compute_action_mask, ACTION_BUILD_DRILL, SLOT_DX, SLOT_DY,
+    )
+    px, py = 10, 10
+    slot = 0
+    tx = px + SLOT_DX[slot]
+    ty = py + SLOT_DY[slot]
+    state = {
+        "player": {"x": px, "y": py, "alive": True},
+        "resources": {"copper": 100},
+        "buildings": [],
+        "grid": [],
+        "blockedTiles": [],
+        "oreGrid": [[tx, ty, 1]],
+    }
+    mask = compute_action_mask(state)
+    assert bool(mask[ACTION_BUILD_DRILL]) == True
+
+
+def test_oob_slot_masked_when_map_dimensions_known():
+    from rl.env.spaces import compute_action_mask, NUM_ACTION_TYPES
+    state = {
+        "player": {"x": 1, "y": 1, "alive": True},
+        "resources": {"copper": 100},
+        "buildings": [],
+        "grid": [],
+        "blockedTiles": [],
+        "oreGrid": [],
+        "mapWidth": 5,
+        "mapHeight": 5,
+    }
+    mask = compute_action_mask(state)
+    from rl.env.spaces import SLOT_DX, SLOT_DY, _footprint
+    for slot in range(9):
+        tx = 1 + SLOT_DX[slot]
+        ty = 1 + SLOT_DY[slot]
+        fp = _footprint(tx, ty, "copper-wall")
+        oob = any(fx < 0 or fx >= 5 or fy < 0 or fy >= 5 for fx, fy in fp)
+        if oob:
+            assert bool(mask[NUM_ACTION_TYPES + slot]) == False
