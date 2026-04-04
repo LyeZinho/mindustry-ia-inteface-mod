@@ -158,6 +158,14 @@ def test_reward_no_mining_when_inventory_empty():
     assert abs(r - r_no_delta) < 1e-6
 
 
+def test_inventory_none_values_do_not_crash():
+    """Inventory dict may contain None values from the game state; must not raise."""
+    prev = make_state(inventory={"copper": None, "lead": None})
+    curr = make_state(inventory={"copper": None, "lead": None})
+    r = compute_reward(prev, curr, done=False)
+    assert isinstance(r, float)
+
+
 def test_no_penalty_if_actions_diverse():
     """Diverse actions (including BUILD) should not trigger penalty."""
     from rl.rewards.multi_objective import _detect_action_repetition_penalty

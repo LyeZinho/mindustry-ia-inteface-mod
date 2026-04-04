@@ -371,7 +371,7 @@ def compute_reward(
     player_alive_bonus = 1.0 if (player_alive and not core_destroyed) else 0.0
 
     def _total_inventory(state: Dict[str, Any]) -> float:
-        return sum(float(v) for v in state.get("inventory", {}).values())
+        return sum(float(v) for v in state.get("inventory", {}).values() if v is not None)
 
     inventory_delta = _total_inventory(curr_state) - _total_inventory(prev_state)
     manual_mining_reward = max(0.0, inventory_delta * 0.1)
