@@ -43,7 +43,7 @@ from rl.optimization.worker import OptimizationWorker
 
 
 DEFAULT_TRAINING_MAPS = [
-    "Ancient Caldera", "Archipelago", "Debris Field", "Domain", "Fork", "Fortress",
+    "Ancient Caldera", "Debris Field", "Domain", "Fork", "Fortress",
     "Glacier", "Islands", "Labyrinth", "Maze", "Molten Lake", "Mud Flats",
     "Passage", "Shattered", "Tendrils", "Triad", "Veins", "Wasteland",
 ]
