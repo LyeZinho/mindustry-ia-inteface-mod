@@ -650,7 +650,7 @@ function handlePlayerBuildCommand(parts) {
         "duo":               [["copper", 35]],
         "copper-wall":       [["copper", 6]],
         "solar-panel":       [["copper", 40], ["lead", 35]],
-        "mechanical-drill":  [["copper", 45], ["lead", 45], ["graphite", 30]]
+        "mechanical-drill":  [["copper", 12]]
     };
     let costs = blockCosts[blockName];
     if (costs != null) {

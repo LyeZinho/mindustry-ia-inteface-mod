@@ -87,7 +87,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument(
         "--mod-zip",
-        default="mimi-gateway-v1.0.5.zip",
+        default="mimi-gateway-v1.0.6.zip",
         dest="mod_zip",
         help="Path to the Mimi Gateway mod zip to install",
     )
