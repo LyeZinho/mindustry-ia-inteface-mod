@@ -265,8 +265,10 @@ class MindustryEnv(gym.Env):
                         power_map[y, x] = 1.0
 
         for tile in state.get("oreGrid", []):
-            ox = int(tile.get("x", 0))
-            oy = int(tile.get("y", 0))
+            if isinstance(tile, (list, tuple)) and len(tile) >= 2:
+                ox, oy = int(tile[0]), int(tile[1])
+            else:
+                continue
             if 0 <= ox < GRID_SIZE and 0 <= oy < GRID_SIZE:
                 build_map[oy, ox] = min(1.0, build_map[oy, ox] + 0.8)
 

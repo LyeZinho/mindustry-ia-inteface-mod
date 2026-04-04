@@ -1327,7 +1327,7 @@ Events.run(Trigger.update, () => {
 // ============================================================================
 function init() {
     Log.info("==============================================");
-    Log.info("[Mimi Gateway] v1.0.0 - Inicializando...");
+    Log.info("[Mimi Gateway] v1.0.7 - Inicializando...");
     Log.info("[Mimi Gateway] Porta: " + config.port);
     Log.info("[Mimi Gateway] Intervalo de atualização: " + config.updateInterval + " ticks");
     Log.info("==============================================");
