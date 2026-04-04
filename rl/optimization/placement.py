@@ -54,7 +54,7 @@ def compute_placement_scores(state: dict) -> np.ndarray:
         slot_y = player_y + SLOT_DY[slot]
         
         if (slot_x, slot_y) in blocked_tiles:
-            scores[slot] = 0.0
+            scores[slot] = -0.5
             continue
         
         ore_id = ore_grid_dict.get((slot_x, slot_y), 0)
@@ -78,6 +78,6 @@ def compute_placement_scores(state: dict) -> np.ndarray:
             _THREAT_WEIGHT * threat_score
         )
         
-        scores[slot] = math.tanh(raw_score / 3.0)
+        scores[slot] = math.tanh(raw_score / 2.0)
     
     return scores

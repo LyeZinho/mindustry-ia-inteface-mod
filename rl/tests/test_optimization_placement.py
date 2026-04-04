@@ -27,4 +27,4 @@ def test_ore_slot_scores_higher():
 def test_blocked_slot_scores_zero():
     state = {**SIMPLE_STATE, "blockedTiles": [[9, 11]]}
     scores = compute_placement_scores(state)
-    assert scores[0] == pytest.approx(0.0)
+    assert scores[0] == pytest.approx(-0.5)
