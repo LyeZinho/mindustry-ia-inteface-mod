@@ -212,7 +212,19 @@ def parse_observation(
 ) -> Dict[str, np.ndarray]:
     """Convert raw Mimi Gateway state dict into gym-compatible observation."""
     ore_grid = state.get("oreGrid", [])
-    grid_arr = _parse_grid(state.get("grid", []), ore_grid, threat_map, power_map, build_map)
+    core = state.get("core", {})
+    core_x = int(core.get("x", GRID_SIZE // 2))
+    core_y = int(core.get("y", GRID_SIZE // 2))
+    grid_arr = _parse_grid(
+        state.get("grid", []),
+        ore_grid,
+        threat_map,
+        power_map,
+        build_map,
+        buildings=state.get("buildings", []),
+        core_x=core_x,
+        core_y=core_y,
+    )
     features = _parse_features(state, opt_signals)
     return {
         "grid": grid_arr.astype(np.float32),
@@ -226,8 +238,19 @@ def _parse_grid(
     threat_map: Optional[np.ndarray] = None,
     power_map: Optional[np.ndarray] = None,
     build_map: Optional[np.ndarray] = None,
+    buildings: Optional[List] = None,
+    core_x: Optional[int] = None,
+    core_y: Optional[int] = None,
 ) -> np.ndarray:
     arr = np.zeros((GRID_CHANNELS, GRID_SIZE, GRID_SIZE), dtype=np.float32)
+
+    if core_x is None:
+        core_x = GRID_SIZE // 2
+    if core_y is None:
+        core_y = GRID_SIZE // 2
+    origin_x = core_x - GRID_SIZE // 2
+    origin_y = core_y - GRID_SIZE // 2
+
     for tile in grid:
         x = int(tile.get("x", 0))
         y = int(tile.get("y", 0))
@@ -238,10 +261,22 @@ def _parse_grid(
         arr[2, y, x] = _encode_team(tile.get("team", "neutral"))
         arr[7, y, x] = float(tile.get("rotation", 0)) / 3.0
 
+    if buildings:
+        for b in buildings:
+            gx = int(b.get("x", 0)) - origin_x
+            gy = int(b.get("y", 0)) - origin_y
+            if 0 <= gx < GRID_SIZE and 0 <= gy < GRID_SIZE:
+                arr[0, gy, gx] = _encode_block(b.get("block", "air"))
+                arr[1, gy, gx] = float(b.get("hp", 0.0))
+                arr[2, gy, gx] = _encode_team(b.get("team", "neutral"))
+                arr[7, gy, gx] = float(b.get("rotation", 0)) / 3.0
+
     if ore_grid:
         for entry in ore_grid:
             if len(entry) >= 3:
-                ox, oy, ore_id = int(entry[0]), int(entry[1]), int(entry[2])
+                ox = int(entry[0]) - origin_x
+                oy = int(entry[1]) - origin_y
+                ore_id = int(entry[2])
                 if 0 <= ox < GRID_SIZE and 0 <= oy < GRID_SIZE:
                     arr[3, oy, ox] = ore_id / 7.0
 
@@ -290,11 +325,13 @@ def _parse_features(
     # Enemies (top MAX_ENEMIES, zero-padded)
     enemies = state.get("enemies", [])[:MAX_ENEMIES]
     base = 13
+    core_x = float(core.get("x", 0))
+    core_y = float(core.get("y", 0))
     for i, e in enumerate(enemies):
         offset = base + i * ENEMY_FEATURES
         feat[offset] = float(e.get("hp", 0.0))
-        feat[offset + 1] = float(e.get("x", 0)) / (GRID_SIZE - 1)
-        feat[offset + 2] = float(e.get("y", 0)) / (GRID_SIZE - 1)
+        feat[offset + 1] = (float(e.get("x", 0)) - core_x) / GRID_SIZE
+        feat[offset + 2] = (float(e.get("y", 0)) - core_y) / GRID_SIZE
         feat[offset + 3] = ENEMY_TYPE_IDS.get(e.get("type", ""), 0) / _NUM_KNOWN_ENEMY_TYPES
 
     # Friendly units (top MAX_FRIENDLY, zero-padded)
@@ -303,17 +340,15 @@ def _parse_features(
     for i, u in enumerate(friendly):
         offset = base + i * FRIENDLY_FEATURES
         feat[offset] = float(u.get("hp", 0.0))
-        feat[offset + 1] = float(u.get("x", 0)) / (GRID_SIZE - 1)
-        feat[offset + 2] = float(u.get("y", 0)) / (GRID_SIZE - 1)
+        feat[offset + 1] = (float(u.get("x", 0)) - core_x) / GRID_SIZE
+        feat[offset + 2] = (float(u.get("y", 0)) - core_y) / GRID_SIZE
 
     feat[42] = float(state.get("waveTime", 0)) / 3600.0
-    feat[43] = float(core.get("x", 0)) / (GRID_SIZE - 1)
-    feat[44] = float(core.get("y", 0)) / (GRID_SIZE - 1)
+    feat[43] = 0.5
+    feat[44] = 0.5
 
     # Player unit position relative to core (feat[45..48])
     player = state.get("player", {})
-    core_x = float(core.get("x", 0))
-    core_y = float(core.get("y", 0))
     player_alive = bool(player.get("alive", False))
     if player_alive:
         feat[45] = (float(player.get("x", core_x)) - core_x) / 15.0
@@ -400,6 +435,11 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
         by = int(building.get("y", 0))
         buildings_set.add((bx, by))
 
+    blocked_set = set()
+    for entry in state.get("blockedTiles", []):
+        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            blocked_set.add((int(entry[0]), int(entry[1])))
+
     # Get player position to compute slot coordinates
     player_x = int(player.get("x", 0)) if player else 0
     player_y = int(player.get("y", 0)) if player else 0
@@ -426,8 +466,8 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
                 block_at_target = grid_dict.get((target_x, target_y), "air")
                 is_building_at_target = (target_x, target_y) in buildings_set
                 
-                # Mask slot if target tile is occupied (not air in grid OR has building)
-                if block_at_target != "air" or is_building_at_target:
+                # Mask slot if target tile is occupied (not air in grid OR has building OR in blockedTiles)
+                if block_at_target != "air" or is_building_at_target or (target_x, target_y) in blocked_set:
                     slot_mask_idx = NUM_ACTION_TYPES + slot
                     mask[slot_mask_idx] = False
 

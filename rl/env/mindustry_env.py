@@ -245,9 +245,15 @@ class MindustryEnv(gym.Env):
         power_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
         build_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
 
+        core = state.get("core", {})
+        core_abs_x = int(core.get("x", GRID_SIZE // 2))
+        core_abs_y = int(core.get("y", GRID_SIZE // 2))
+        origin_x = core_abs_x - GRID_SIZE // 2
+        origin_y = core_abs_y - GRID_SIZE // 2
+
         for enemy in state.get("enemies", []):
-            ex = int(enemy.get("x", 0))
-            ey = int(enemy.get("y", 0))
+            ex = int(enemy.get("x", 0)) - origin_x
+            ey = int(enemy.get("y", 0)) - origin_y
             ehp = float(enemy.get("hp", 0.0))
             for y in range(GRID_SIZE):
                 for x in range(GRID_SIZE):
@@ -256,8 +262,8 @@ class MindustryEnv(gym.Env):
 
         power_nodes = state.get("powerNodes", [])
         for node in power_nodes:
-            nx = int(node.get("x", 0))
-            ny = int(node.get("y", 0))
+            nx = int(node.get("x", 0)) - origin_x
+            ny = int(node.get("y", 0)) - origin_y
             nr = int(node.get("range", 10))
             for y in range(max(0, ny - nr), min(GRID_SIZE, ny + nr + 1)):
                 for x in range(max(0, nx - nr), min(GRID_SIZE, nx + nr + 1)):
@@ -266,15 +272,15 @@ class MindustryEnv(gym.Env):
 
         for tile in state.get("oreGrid", []):
             if isinstance(tile, (list, tuple)) and len(tile) >= 2:
-                ox, oy = int(tile[0]), int(tile[1])
+                ox = int(tile[0]) - origin_x
+                oy = int(tile[1]) - origin_y
             else:
                 continue
             if 0 <= ox < GRID_SIZE and 0 <= oy < GRID_SIZE:
                 build_map[oy, ox] = min(1.0, build_map[oy, ox] + 0.8)
 
-        core = state.get("core", {})
-        cx = int(core.get("x", GRID_SIZE // 2))
-        cy = int(core.get("y", GRID_SIZE // 2))
+        cx = GRID_SIZE // 2
+        cy = GRID_SIZE // 2
         for y in range(GRID_SIZE):
             for x in range(GRID_SIZE):
                 dist = max(1.0, ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5)
@@ -349,6 +355,15 @@ class MindustryEnv(gym.Env):
             by = int(building.get("y", 0))
             if bx == target_x and by == target_y:
                 return False
-        
+
+        # Check blockedTiles (solid terrain, non-air blocks reported by mod)
+        blocked_set = {
+            (int(e[0]), int(e[1]))
+            for e in self._prev_state.get("blockedTiles", [])
+            if isinstance(e, (list, tuple)) and len(e) >= 2
+        }
+        if (target_x, target_y) in blocked_set:
+            return False
+
         # Tile not in grid and no building = free to build
         return True

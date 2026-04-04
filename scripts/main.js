@@ -466,9 +466,9 @@ function captureGameState() {
             for (let by = centerY - radius; by <= centerY + radius; by++) {
                 try {
                     let tile = Vars.world.tile(bx, by);
-                    if (tile != null && tile.block() != null) {
+                    if (tile != null) {
                         let blk = tile.block();
-                        if (blk.isStatic() || blk.health <= 0 || blk.name === "spawn") {
+                        if (tile.solid() || (blk != null && blk.name !== "air")) {
                             blockedArr.push([bx, by]);
                         }
                     }
