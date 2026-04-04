@@ -3,7 +3,7 @@
   displayName: "[cyan]Mimi Gateway[]"
   author: "Mimi v2 Team"
   description: "AI Gateway Mod - Exposes Mindustry API for RL agents"
-  version: "1.0.0"
+  version: "1.0.7"
   hidden: true
   minGameVersion: "146"
 }

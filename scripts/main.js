@@ -422,6 +422,60 @@ function captureGameState() {
         
         // Keep grid array for now (optional) but empty for JSON compression
         state.grid = [];
+
+        // oreGrid: ore overlay tiles within gridRadius
+        // Format: [[x, y, ore_id], ...]
+        let oreGridArr = [];
+        for (let ox = centerX - radius; ox <= centerX + radius; ox++) {
+            for (let oy = centerY - radius; oy <= centerY + radius; oy++) {
+                try {
+                    let tile = Vars.world.tile(ox, oy);
+                    if (tile != null) {
+                        let overlay = tile.overlay();
+                        let overlayName = overlay != null ? overlay.name : "";
+                        let oreId = ORE_IDS[overlayName];
+                        if (oreId !== undefined) {
+                            oreGridArr.push([ox, oy, oreId]);
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+        state.oreGrid = oreGridArr;
+
+        // powerNodes: power-node and power-generating buildings + their range
+        // Format: [{"x": x, "y": y, "range": r}, ...]
+        let powerNodesArr = [];
+        const POWER_NODE_BLOCKS = {"power-node": 10, "power-node-large": 15, "battery": 5, "battery-large": 8};
+        let playerTeam = Team.sharded;
+        Groups.build.each(b => {
+            try {
+                let name = b.block.name;
+                let range = POWER_NODE_BLOCKS[name];
+                if (range !== undefined && b.team === playerTeam) {
+                    powerNodesArr.push({x: b.tileX(), y: b.tileY(), range: range});
+                }
+            } catch(e) {}
+        });
+        state.powerNodes = powerNodesArr;
+
+        // blockedTiles: tiles with indestructible/environmental blocks within gridRadius
+        // Format: [[x, y], ...]
+        let blockedArr = [];
+        for (let bx = centerX - radius; bx <= centerX + radius; bx++) {
+            for (let by = centerY - radius; by <= centerY + radius; by++) {
+                try {
+                    let tile = Vars.world.tile(bx, by);
+                    if (tile != null && tile.block() != null) {
+                        let blk = tile.block();
+                        if (blk.isStatic() || blk.health <= 0 || blk.name === "spawn") {
+                            blockedArr.push([bx, by]);
+                        }
+                    }
+                } catch(e) {}
+            }
+        }
+        state.blockedTiles = blockedArr;
          
         let allTeams = [Team.sharded, Team.crux, Team.derelict];
         allTeams.forEach(t => {
@@ -490,7 +544,7 @@ function validateCommand(commandStr) {
     }
     
     let cmd = parts[0].toUpperCase();
-    let validCommands = ["BUILD", "UNIT_MOVE", "MSG", "ATTACK", "STOP", "FACTORY", "REPAIR", "DELETE", "UPGRADE", "RESET", "PLAYER_MOVE", "PLAYER_BUILD", "REPAIR_SLOT"];
+    let validCommands = ["BUILD", "UNIT_MOVE", "MSG", "ATTACK", "STOP", "FACTORY", "REPAIR", "DELETE", "UPGRADE", "RESET", "PLAYER_MOVE", "PLAYER_BUILD", "REPAIR_SLOT", "SCAN_ORES", "GET_POWER_NETWORK", "GET_THREAT_MAP", "CHECK_BLOCKED", "GET_BUILD_CANDIDATES"];
     
     if (validCommands.indexOf(cmd) === -1) {
         return { valid: false, error: "Comando desconhecido: " + cmd };
@@ -552,6 +606,21 @@ function processCommand(commandStr) {
                 break;
             case "REPAIR_SLOT":
                 handleRepairSlotCommand(parts);
+                break;
+            case "SCAN_ORES":
+                handleScanOresCommand();
+                break;
+            case "GET_POWER_NETWORK":
+                handleGetPowerNetworkCommand();
+                break;
+            case "GET_THREAT_MAP":
+                handleGetThreatMapCommand();
+                break;
+            case "CHECK_BLOCKED":
+                handleCheckBlockedCommand(parts);
+                break;
+            case "GET_BUILD_CANDIDATES":
+                handleGetBuildCandidatesCommand(parts);
                 break;
         }
     } catch (e) {
@@ -715,6 +784,119 @@ function handleRepairSlotCommand(parts) {
     if (build.health < build.maxHealth) {
         build.heal(build.maxHealth * 0.5);
         Log.info("[Mimi Gateway] REPAIR_SLOT: reparado em (" + targetTileX + "," + targetTileY + ")");
+    }
+}
+
+function handleScanOresCommand() {
+    let allOres = [];
+    for (let sx = 0; sx < Vars.world.width(); sx++) {
+        for (let sy = 0; sy < Vars.world.height(); sy++) {
+            try {
+                let tile = Vars.world.tile(sx, sy);
+                if (tile != null) {
+                    let overlay = tile.overlay();
+                    let overlayName = overlay != null ? overlay.name : "";
+                    let oreId = ORE_IDS[overlayName];
+                    if (oreId !== undefined) {
+                        allOres.push([sx, sy, oreId]);
+                    }
+                }
+            } catch(e) {}
+        }
+    }
+    sendLine(JSON.stringify({cmd: "SCAN_ORES", data: allOres}));
+}
+
+function handleGetPowerNetworkCommand() {
+    let pnodes = [];
+    Groups.build.each(b => {
+        try {
+            if (b.power != null && b.power.graph != null) {
+                let range = b.block.powerRange !== undefined ? b.block.powerRange : 0;
+                pnodes.push({
+                    x: b.tileX(), y: b.tileY(),
+                    range: range,
+                    block: b.block.name,
+                    produced: b.power.status > 0 ? b.block.powerProduction : 0
+                });
+            }
+        } catch(e) {}
+    });
+    sendLine(JSON.stringify({cmd: "GET_POWER_NETWORK", data: pnodes}));
+}
+
+function handleGetThreatMapCommand() {
+    let threats = [];
+    Groups.unit.each(u => {
+        try {
+            if (u.team !== Team.sharded) {
+                let range = u.type.weapons.size > 0 ? u.type.weapons.get(0).bullet.range : 5;
+                threats.push({
+                    x: Math.floor(u.x / 8),
+                    y: Math.floor(u.y / 8),
+                    range: range / 8,
+                    hp: u.health / u.maxHealth
+                });
+            }
+        } catch(e) {}
+    });
+    sendLine(JSON.stringify({cmd: "GET_THREAT_MAP", data: threats}));
+}
+
+function handleCheckBlockedCommand(parts) {
+    if (parts.length < 3) {
+        sendLine(JSON.stringify({cmd: "CHECK_BLOCKED", error: "missing args"}));
+        return;
+    }
+    let cx = parseInt(parts[1]);
+    let cy = parseInt(parts[2]);
+    let blocked = 0;
+    try {
+        let tile = Vars.world.tile(cx, cy);
+        if (tile != null) {
+            let blk = tile.block();
+            if (blk != null && blk.name !== "air" && blk.name !== "") blocked = 1;
+        }
+    } catch(e) {}
+    sendLine(JSON.stringify({cmd: "CHECK_BLOCKED", x: cx, y: cy, blocked: blocked}));
+}
+
+function handleGetBuildCandidatesCommand(parts) {
+    if (parts.length < 2) {
+        sendLine(JSON.stringify({cmd: "GET_BUILD_CANDIDATES", error: "missing block name"}));
+        return;
+    }
+    let blockName = parts[1];
+    let candidates = [];
+    for (let cx2 = coreTileX - 8; cx2 <= coreTileX + 8; cx2++) {
+        for (let cy2 = coreTileY - 8; cy2 <= coreTileY + 8; cy2++) {
+            try {
+                let tile = Vars.world.tile(cx2, cy2);
+                if (tile == null) continue;
+                let blk = tile.block();
+                if (blk != null && blk.name !== "air" && blk.name !== "") continue;
+                let dist = Math.abs(cx2 - coreTileX) + Math.abs(cy2 - coreTileY);
+                let score = 1.0 / (dist + 1);
+                if (blockName.indexOf("drill") >= 0) {
+                    let overlay = tile.overlay();
+                    let overlayName = overlay != null ? overlay.name : "";
+                    if (ORE_IDS[overlayName] !== undefined) score += 2.0;
+                }
+                candidates.push({x: cx2, y: cy2, score: score});
+            } catch(e) {}
+        }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    sendLine(JSON.stringify({cmd: "GET_BUILD_CANDIDATES", block: blockName, data: candidates.slice(0, 10)}));
+}
+
+function sendLine(str) {
+    if (outputWriter != null) {
+        try {
+            outputWriter.println(str);
+        } catch(e) {
+            if (config.debug) Log.info("[Mimi Gateway] sendLine error: " + e);
+        }
     }
 }
 
@@ -1096,7 +1278,9 @@ function handleResetCommand(parts) {
             Vars.state.rules.waves = true;
             Vars.state.rules.waveSpacing = 1800; // 30 seconds between waves
             Vars.state.wavetime = 1800; // first wave in 30 game seconds (matches waveSpacing)
-            Log.info("[Mimi Gateway] waves enabled, waveSpacing=1800, wavetime=1800");
+            Vars.state.rules.attackMode = false;
+            Vars.state.rules.waveTeam = Team.crux;
+            Log.info("[Mimi Gateway] waves enabled, waveSpacing=1800, wavetime=1800, waveTeam=crux");
 
             // Spawn player unit (poly) at core position
             Core.app.post(() => {
