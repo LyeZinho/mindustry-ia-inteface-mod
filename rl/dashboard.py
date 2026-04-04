@@ -154,7 +154,9 @@ def make_updater(axes, csv_path: str, metrics_path: str, window: int):
     def _waiting(ax, title: str) -> None:
         ax.cla()
         _style_ax(ax, title)
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+        # Axes3D.text() requires (x,y,z,s) — use text2D which works for both 2D and 3D
+        text_fn = getattr(ax, "text2D", ax.text)
+        text_fn(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
                 ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
 
     def update(_frame):
