@@ -751,7 +751,7 @@ function handlePlayerBuildCommand(parts) {
     let rotation = parts.length > 3 ? parseInt(parts[3]) : 0;
     if (isNaN(rotation) || rotation < 0 || rotation > 3) rotation = 0;
     try {
-        tile.setNet(blockType, Team.sharded, rotation);
+        Call.constructBlock(Team.sharded, tile, blockType, rotation);
         Log.info("[Mimi Gateway] PLAYER_BUILD: " + blockName + " em (" + targetTileX + "," + targetTileY + ") rotation=" + rotation);
     } catch (e) {
         Log.err("[Mimi Gateway] Erro ao construir: " + e);

@@ -419,6 +419,9 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
     
     Grid occupation check: For BUILD actions, mask slots where the target tile
     already has a block (block != "air").
+    
+    Ore check: For DRILL and PNEUMATIC_DRILL, additionally mask slots where there's
+    no ore in oreGrid (drills require ore to function).
     """
     mask = np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
 
@@ -450,6 +453,14 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
     for entry in state.get("blockedTiles", []):
         if isinstance(entry, (list, tuple)) and len(entry) >= 2:
             blocked_set.add((int(entry[0]), int(entry[1])))
+
+    # Parse oreGrid to check for ore presence
+    ore_set = set()
+    for entry in state.get("oreGrid", []):
+        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            ore_x = int(entry[0])
+            ore_y = int(entry[1])
+            ore_set.add((ore_x, ore_y))
 
     # Get player position to compute slot coordinates
     player_x = int(player.get("x", 0)) if player else 0
@@ -491,6 +502,12 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
                 if block_at_target != "air" or is_building_at_target or (target_x, target_y) in blocked_set:
                     slot_mask_idx = NUM_ACTION_TYPES + slot
                     mask[slot_mask_idx] = False
+                
+                # For drill actions, additionally mask slots without ore
+                if i in (ACTION_BUILD_DRILL, ACTION_BUILD_PNEUMATIC_DRILL):
+                    if (target_x, target_y) not in ore_set:
+                        slot_mask_idx = NUM_ACTION_TYPES + slot
+                        mask[slot_mask_idx] = False
 
     if mask[ACTION_DELETE]:
         ally_demolishable = {
