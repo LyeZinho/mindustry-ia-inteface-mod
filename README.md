@@ -263,7 +263,64 @@ while True:
 
 ## RL Training Usage
 
-For headless server training:
+### Starting a training run
+
+```bash
+# Single map (recommended when starting from scratch)
+venv/bin/python -m rl.train --maps "Ancient Caldera"
+
+# Multiple maps
+venv/bin/python -m rl.train --maps "Ancient Caldera,Glacier,Wasteland"
+
+# Custom timesteps and parallel envs
+venv/bin/python -m rl.train --maps "Ancient Caldera" --timesteps 2000000 --n-envs 4
+```
+
+### Resuming from a checkpoint
+
+```bash
+# Auto-detect the latest checkpoint in rl/models/
+venv/bin/python -m rl.train --maps "Ancient Caldera" --resume
+
+# Resume and expand the map rotation
+venv/bin/python -m rl.train --maps "Ancient Caldera,Glacier" --resume
+
+# Resume from a specific checkpoint file
+venv/bin/python -m rl.train --maps "Ancient Caldera" --resume rl/models/mindustry_ppo_50000_steps.zip
+```
+
+Checkpoints are saved every 10 000 steps as `rl/models/mindustry_ppo_<N>_steps.zip`. VecNormalize running stats are saved alongside as `rl/models/vecnormalize_<N>_steps.pkl` and restored automatically on resume.
+
+### All training flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--maps` | built-in list | Comma-separated map names to cycle |
+| `--resume [PATH]` | — | Resume from checkpoint; omit PATH to auto-detect latest |
+| `--timesteps` | 1 000 000 | Total environment steps to train |
+| `--n-envs` | 4 | Parallel server instances |
+| `--max-steps` | 5 000 | Steps per episode |
+| `--lr` | 3e-4 | Initial learning rate |
+| `--lr-end` | 1e-5 | Final learning rate (linear decay) |
+| `--models-dir` | `rl/models` | Where checkpoints are saved |
+| `--logs-dir` | `rl/logs` | TensorBoard logs and live metrics |
+| `--no-server` | false | Skip spawning server (connect to existing) |
+
+### Recommended curriculum workflow
+
+1. Train on one simple map until the agent learns basic mining:
+   ```bash
+   venv/bin/python -m rl.train --maps "Ancient Caldera" --timesteps 1000000
+   ```
+2. Resume and add more maps gradually:
+   ```bash
+   venv/bin/python -m rl.train --maps "Ancient Caldera,Glacier" --resume --timesteps 1000000
+   venv/bin/python -m rl.train --maps "Ancient Caldera,Glacier,Wasteland" --resume --timesteps 2000000
+   ```
+
+---
+
+For headless server training (legacy):
 
 1. Run Mindustry with `-server -no-graphics` or use `server.jar`
 2. Enable fast-forward: `fps 60` in console
