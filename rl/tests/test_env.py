@@ -32,8 +32,8 @@ def test_reset_returns_valid_obs():
     env = MindustryEnv(client=make_mock_client())
     obs, info = env.reset()
     assert "grid" in obs and "features" in obs
-    assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (92,)
+    assert obs["grid"].shape == (8, 31, 31)
+    assert obs["features"].shape == (121,)
     assert isinstance(info, dict)
 
 
@@ -44,8 +44,8 @@ def test_step_returns_five_tuple():
     result = env.step(action)
     assert len(result) == 5
     obs, reward, terminated, truncated, info = result
-    assert obs["grid"].shape == (4, 31, 31)
-    assert obs["features"].shape == (92,)
+    assert obs["grid"].shape == (8, 31, 31)
+    assert obs["features"].shape == (121,)
     assert isinstance(reward, float)
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)

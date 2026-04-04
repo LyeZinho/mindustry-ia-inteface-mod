@@ -2,8 +2,35 @@
 Observation and action space definitions for the Mindustry RL environment.
 
 Observation: Dict with two tensors:
-  "grid":     float32 (4, 31, 31)  — CNN input
-  "features": float32 (92,)        — MLP input (resources: copper,lead,graphite,titanium,thorium,coal,sand; power; wave; enemies; friendly; player; ore_in_slot[0..8])
+  "grid":     float32 (8, 31, 31)  — CNN input
+    ch0: block type (encoded)
+    ch1: block hp
+    ch2: team (ally/enemy/neutral)
+    ch3: ore type (from oreGrid)
+    ch4: threat score heatmap
+    ch5: power coverage heatmap
+    ch6: build score heatmap
+    ch7: rotation
+  "features": float32 (121,) — MLP input
+    0:      core_hp
+    1-7:    resources (copper,lead,graphite,titanium,thorium,coal,sand) / 1000
+    8-11:   power (produced,consumed,stored,capacity normalized)
+    12:     wave / 100
+    13-32:  enemies (5 × 4: hp,x,y,type_enc)
+    33-41:  friendly units (3 × 3: hp,x,y)
+    42:     waveTime / 3600
+    43-44:  core x,y normalized
+    45-48:  player (dx,dy,alive,hp)
+    49-63:  nearby ores (5 × 3: distance,angle,block_id)
+    64-78:  nearby enemies (5 × 3: distance,angle,hp)
+    79-82:  extended resources (silicon,oil,water,metaglass) / 1000
+    83-91:  ore_in_slot[0..8] / 7
+    92-100: placement_scores[0..8] (tanh normalized, from opt worker)
+    101:    power_deficit (from opt worker)
+    102:    defense_gap (from opt worker)
+    103:    wave_threat_index (from opt worker)
+    104-108: build_order_priority[0..4] (from opt worker)
+    109-120: lookahead_scores[0..11] (from opt worker)
 
 Action: MultiDiscrete([12, 9])
   action[0]: action_type  ∈ {0..11} (WAIT, MOVE, BUILD_TURRET, BUILD_WALL, BUILD_POWER, BUILD_DRILL, REPAIR, BUILD_CONVEYOR, BUILD_GRAPHITE_PRESS, BUILD_SILICON_SMELTER, BUILD_COMBUSTION_GEN, BUILD_PNEUMATIC_DRILL)
@@ -21,7 +48,8 @@ from gymnasium import spaces
 # ------------------------------------------------------------------ #
 
 GRID_SIZE = 31
-OBS_FEATURES_DIM = 92   # 1(core_hp)+7(res)+4(power)+1(wave)+20(enemies)+9(friendly)+7(player/core)+15(nearby_ores)+15(nearby_enemies)+4(ext_resources)+9(ore_in_slot)=92
+GRID_CHANNELS = 8       # ch0:block ch1:hp ch2:team ch3:ore ch4:threat ch5:power ch6:build_score ch7:rotation
+OBS_FEATURES_DIM = 121  # 92 existing + 9(placement) + 1(power_deficit) + 1(defense_gap) + 1(wave_threat) + 5(build_order) + 12(lookahead) = 121
 EXTENDED_RESOURCES: list[str] = ["silicon", "oil", "water", "metaglass"]
 NUM_SLOTS = 9           # 3x3 relative grid around unit (also covers 8 directions + 0 for WAIT)
 MAX_ENEMIES = 5
@@ -126,7 +154,7 @@ MOVE_DIR_DY = [1, 1, 0, -1, -1, -1,  0,  1]
 
 def make_obs_space() -> spaces.Dict:
     return spaces.Dict({
-        "grid": spaces.Box(0.0, 1.0, shape=(4, GRID_SIZE, GRID_SIZE), dtype=np.float32),
+        "grid": spaces.Box(0.0, 1.0, shape=(GRID_CHANNELS, GRID_SIZE, GRID_SIZE), dtype=np.float32),
         "features": spaces.Box(-np.inf, np.inf, shape=(OBS_FEATURES_DIM,), dtype=np.float32),
     })
 
@@ -152,23 +180,31 @@ def _encode_block(block: str) -> float:
     return idx / _NUM_KNOWN_BLOCKS
 
 
-def parse_observation(state: Dict[str, Any]) -> Dict[str, np.ndarray]:
+def parse_observation(
+    state: Dict[str, Any],
+    opt_signals: Optional[Dict[str, Any]] = None,
+    threat_map: Optional[np.ndarray] = None,
+    power_map: Optional[np.ndarray] = None,
+    build_map: Optional[np.ndarray] = None,
+) -> Dict[str, np.ndarray]:
     """Convert raw Mimi Gateway state dict into gym-compatible observation."""
-    grid_arr = _parse_grid(state.get("grid", []))
-    features = _parse_features(state)
+    ore_grid = state.get("oreGrid", [])
+    grid_arr = _parse_grid(state.get("grid", []), ore_grid, threat_map, power_map, build_map)
+    features = _parse_features(state, opt_signals)
     return {
         "grid": grid_arr.astype(np.float32),
         "features": features.astype(np.float32),
     }
 
 
-def _parse_grid(grid: List[Dict[str, Any]]) -> np.ndarray:
-    """
-    Parse sparse grid format (31×31 matrix now empty to reduce JSON size from 50KB to 500B).
-    Sparse features (nearby ores/enemies) are extracted separately in _parse_features.
-    Backward compatible: returns (4, 31, 31) zeros if grid is empty array.
-    """
-    arr = np.zeros((4, GRID_SIZE, GRID_SIZE), dtype=np.float32)
+def _parse_grid(
+    grid: List[Dict[str, Any]],
+    ore_grid: Optional[List] = None,
+    threat_map: Optional[np.ndarray] = None,
+    power_map: Optional[np.ndarray] = None,
+    build_map: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    arr = np.zeros((GRID_CHANNELS, GRID_SIZE, GRID_SIZE), dtype=np.float32)
     for tile in grid:
         x = int(tile.get("x", 0))
         y = int(tile.get("y", 0))
@@ -177,11 +213,31 @@ def _parse_grid(grid: List[Dict[str, Any]]) -> np.ndarray:
         arr[0, y, x] = _encode_block(tile.get("block", "air"))
         arr[1, y, x] = float(tile.get("hp", 0.0))
         arr[2, y, x] = _encode_team(tile.get("team", "neutral"))
-        arr[3, y, x] = float(tile.get("rotation", 0)) / 3.0
+        arr[7, y, x] = float(tile.get("rotation", 0)) / 3.0
+
+    if ore_grid:
+        for entry in ore_grid:
+            if len(entry) >= 3:
+                ox, oy, ore_id = int(entry[0]), int(entry[1]), int(entry[2])
+                if 0 <= ox < GRID_SIZE and 0 <= oy < GRID_SIZE:
+                    arr[3, oy, ox] = ore_id / 7.0
+
+    if threat_map is not None:
+        arr[4] = np.clip(threat_map, 0.0, 1.0)
+
+    if power_map is not None:
+        arr[5] = np.clip(power_map, 0.0, 1.0)
+
+    if build_map is not None:
+        arr[6] = np.clip(build_map, 0.0, 1.0)
+
     return arr
 
 
-def _parse_features(state: Dict[str, Any]) -> np.ndarray:
+def _parse_features(
+    state: Dict[str, Any],
+    opt_signals: Optional[Dict[str, Any]] = None,
+) -> np.ndarray:
     feat = np.zeros(OBS_FEATURES_DIM, dtype=np.float32)
 
     core = state.get("core", {})
@@ -268,6 +324,17 @@ def _parse_features(state: Dict[str, Any]) -> np.ndarray:
         ore_id = int(slots_ore[i]) if i < len(slots_ore) else 0
         feat[83 + i] = ore_id / 7.0
 
+    if opt_signals is not None:
+        placement = opt_signals.get("placement_scores", np.zeros(9, dtype=np.float32))
+        feat[92:101] = np.clip(placement, -1.0, 1.0)
+        feat[101] = float(np.clip(opt_signals.get("power_deficit", 0.0), 0.0, 1.0))
+        feat[102] = float(np.clip(opt_signals.get("defense_gap", 0.0), 0.0, 1.0))
+        feat[103] = float(np.clip(opt_signals.get("wave_threat_index", 0.0), 0.0, 1.0))
+        bop = opt_signals.get("build_order_priority", np.zeros(5, dtype=np.float32))
+        feat[104:109] = np.clip(bop, 0.0, 1.0)
+        lookahead = opt_signals.get("lookahead_scores", np.zeros(12, dtype=np.float32))
+        feat[109:121] = np.clip(lookahead, 0.0, 1.0)
+
     return feat
 
 
@@ -279,7 +346,10 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
     """Return boolean mask of shape (NUM_ACTION_TYPES + NUM_SLOTS,).
 
     First NUM_ACTION_TYPES entries: valid action types.
-    Next NUM_SLOTS entries: valid slots (always True).
+    Next NUM_SLOTS entries: valid slots per action (masked if target occupied).
+    
+    Grid occupation check: For BUILD actions, mask slots where the target tile
+    already has a block (block != "air").
     """
     mask = np.ones(NUM_ACTION_TYPES + NUM_SLOTS, dtype=np.bool_)
 
@@ -290,6 +360,26 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
 
     resources = state.get("resources", {})
     buildings = state.get("buildings", [])
+    
+    # Parse grid to check tile occupation
+    grid = state.get("grid", [])
+    grid_dict = {}  # Map (x, y) -> block_name
+    for tile in grid:
+        x = int(tile.get("x", 0))
+        y = int(tile.get("y", 0))
+        block = tile.get("block", "air")
+        grid_dict[(x, y)] = block
+
+    # Parse buildings to check occupation (buildings not in grid snapshot)
+    buildings_set = set()  # Set of occupied (x, y) positions
+    for building in buildings:
+        bx = int(building.get("x", 0))
+        by = int(building.get("y", 0))
+        buildings_set.add((bx, by))
+
+    # Get player position to compute slot coordinates
+    player_x = int(player.get("x", 0)) if player else 0
+    player_y = int(player.get("y", 0)) if player else 0
 
     for i, action in enumerate(ACTION_REGISTRY):
         if i in (ACTION_WAIT, ACTION_MOVE):
@@ -297,8 +387,25 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
         if i == ACTION_REPAIR:
             if len(buildings) == 0:
                 mask[i] = False
+            # Don't mask slots for REPAIR — any friendly building can be repaired
             continue
+        
+        # Check resource availability for this action type
         if not action.mask_fn(resources):
             mask[i] = False
+            continue
+        
+        # For BUILD actions, mask individual slots based on grid and buildings occupation
+        if action.block is not None:
+            for slot in range(NUM_SLOTS):
+                target_x = player_x + SLOT_DX[slot]
+                target_y = player_y + SLOT_DY[slot]
+                block_at_target = grid_dict.get((target_x, target_y), "air")
+                is_building_at_target = (target_x, target_y) in buildings_set
+                
+                # Mask slot if target tile is occupied (not air in grid OR has building)
+                if block_at_target != "air" or is_building_at_target:
+                    slot_mask_idx = NUM_ACTION_TYPES + slot
+                    mask[slot_mask_idx] = False
 
     return mask
