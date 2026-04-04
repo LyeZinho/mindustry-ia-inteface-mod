@@ -272,6 +272,25 @@ class MetadataSaverCallback(BaseCallback):
         return True
 
 
+class VecNormalizeSaveCallback(BaseCallback):
+    def __init__(self, save_path: str, save_freq: int = 10_000, verbose: int = 0) -> None:
+        super().__init__(verbose)
+        self._save_path = Path(save_path)
+        self._save_freq = save_freq
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps % self._save_freq == 0:
+            env = self.training_env
+            if env is not None and hasattr(env, "save"):
+                path = self._save_path / f"vecnormalize_{self.num_timesteps}_steps.pkl"
+                try:
+                    self._save_path.mkdir(parents=True, exist_ok=True)
+                    env.save(str(path))
+                except Exception:
+                    pass
+        return True
+
+
 def make_callbacks(
     save_path: str = "rl/models",
     logs_dir: str = "rl/logs",
@@ -291,4 +310,5 @@ def make_callbacks(
         verbose=verbose,
     )
     metadata_saver = MetadataSaverCallback(save_path=save_path, save_freq=save_freq, verbose=verbose)
-    return CallbackList([checkpoint_cb, reward_logger, live_metrics, metadata_saver])
+    vecnorm_saver = VecNormalizeSaveCallback(save_path=save_path, save_freq=save_freq, verbose=verbose)
+    return CallbackList([checkpoint_cb, reward_logger, live_metrics, metadata_saver, vecnorm_saver])

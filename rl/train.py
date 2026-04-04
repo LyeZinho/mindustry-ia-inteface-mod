@@ -43,6 +43,31 @@ def _install_mod(mod_zip: str, server_data_dir: str) -> None:
     print(f"Mod installed: {dest}")
 
 
+def _find_latest_checkpoint(models_dir: str) -> tuple[str | None, str | None]:
+    p = Path(models_dir)
+
+    candidates = list(p.glob("mindustry_ppo_*_steps.zip"))
+    if candidates:
+        def _steps(f: Path) -> int:
+            try:
+                return int(f.stem.rsplit("_", 2)[-2])
+            except (ValueError, IndexError):
+                return -1
+        latest = max(candidates, key=_steps)
+        n = _steps(latest)
+        vec = p / f"vecnormalize_{n}_steps.pkl"
+        if not vec.exists():
+            vec = p / "vecnormalize.pkl"
+        return str(latest), str(vec) if vec.exists() else None
+
+    final = p / "final_model.zip"
+    if final.exists():
+        vec = p / "vecnormalize.pkl"
+        return str(final), str(vec) if vec.exists() else None
+
+    return None, None
+
+
 def _make_env_factory(host: str, tcp_port: int, max_steps: int, maps) -> Callable:
     def _factory():
         from rl.env.mindustry_env import MindustryEnv
@@ -105,6 +130,15 @@ def parse_args(argv=None) -> argparse.Namespace:
         dest="mod_zip",
         help="Path to the Mimi Gateway mod zip to install",
     )
+    p.add_argument(
+        "--resume",
+        nargs="?",
+        const="auto",
+        default=None,
+        metavar="CHECKPOINT",
+        dest="resume",
+        help="Resume from checkpoint. Omit path to auto-detect latest in --models-dir.",
+    )
     return p.parse_args(argv)
 
 
@@ -148,11 +182,10 @@ def main() -> None:
         if args.n_envs == 1:
             from stable_baselines3.common.monitor import Monitor
             from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-            env = DummyVecEnv([lambda: Monitor(
+            venv = DummyVecEnv([lambda: Monitor(
                 MindustryEnv(host=args.host, tcp_port=args.port, max_steps=args.max_steps, maps=maps),
                 filename=f"{args.logs_dir}/monitor",
             )])
-            env = VecNormalize(env, norm_obs=True, norm_reward=False)
         else:
             from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor, VecNormalize
             env_fns = [
@@ -164,28 +197,63 @@ def main() -> None:
                 )
                 for i in range(args.n_envs)
             ]
-            env = VecNormalize(
-                VecMonitor(SubprocVecEnv(env_fns), filename=f"{args.logs_dir}/monitor"),
-                norm_obs=True,
-                norm_reward=False,
-            )
+            venv = VecMonitor(SubprocVecEnv(env_fns), filename=f"{args.logs_dir}/monitor")
 
-        model = MaskablePPO(
-            policy=MindustryActorCriticPolicy,
-            env=env,
-            learning_rate=_make_lr_schedule(args.lr, args.lr_end),
-            n_steps=args.n_steps,
-            gamma=0.99,
-            gae_lambda=0.95,
-            ent_coef=0.05,
-            verbose=1,
-            tensorboard_log=args.logs_dir,
-        )
+        resume_checkpoint: str | None = None
+        resume_vecnorm: str | None = None
+        if args.resume is not None:
+            if args.resume == "auto":
+                resume_checkpoint, resume_vecnorm = _find_latest_checkpoint(args.models_dir)
+                if resume_checkpoint is None:
+                    raise FileNotFoundError(f"No checkpoint found in {args.models_dir}")
+                print(f"Auto-detected checkpoint: {resume_checkpoint}")
+            else:
+                resume_checkpoint = args.resume
+                resume_vecnorm, _ = None, None
+                p_cp = Path(resume_checkpoint)
+                n_str = p_cp.stem.rsplit("_", 2)
+                if len(n_str) >= 2:
+                    vec_candidate = Path(args.models_dir) / f"vecnormalize_{n_str[-2]}_steps.pkl"
+                    if vec_candidate.exists():
+                        resume_vecnorm = str(vec_candidate)
+                if resume_vecnorm is None:
+                    fallback = Path(args.models_dir) / "vecnormalize.pkl"
+                    if fallback.exists():
+                        resume_vecnorm = str(fallback)
+
+        from stable_baselines3.common.vec_env import VecNormalize
+        if resume_vecnorm is not None:
+            print(f"Loading VecNormalize stats: {resume_vecnorm}")
+            env = VecNormalize.load(resume_vecnorm, venv=venv)
+            env.training = True
+        else:
+            env = VecNormalize(venv, norm_obs=True, norm_reward=False)
+
+        if resume_checkpoint is not None:
+            print(f"Resuming from: {resume_checkpoint}")
+            model = MaskablePPO.load(
+                resume_checkpoint,
+                env=env,
+                learning_rate=_make_lr_schedule(args.lr, args.lr_end),
+            )
+        else:
+            model = MaskablePPO(
+                policy=MindustryActorCriticPolicy,
+                env=env,
+                learning_rate=_make_lr_schedule(args.lr, args.lr_end),
+                n_steps=args.n_steps,
+                gamma=0.99,
+                gae_lambda=0.95,
+                ent_coef=0.05,
+                verbose=1,
+                tensorboard_log=args.logs_dir,
+            )
 
         callbacks = make_callbacks(save_path=args.models_dir, logs_dir=args.logs_dir)
 
+        reset_num_timesteps = resume_checkpoint is None
         print(f"Starting MaskablePPO training for {args.timesteps:,} timesteps ({args.n_envs} envs)...")
-        model.learn(total_timesteps=args.timesteps, callback=callbacks)
+        model.learn(total_timesteps=args.timesteps, callback=callbacks, reset_num_timesteps=reset_num_timesteps)
 
         final_path = f"{args.models_dir}/final_model"
         model.save(final_path)
