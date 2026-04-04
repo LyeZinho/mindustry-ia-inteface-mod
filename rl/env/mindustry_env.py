@@ -232,7 +232,8 @@ class MindustryEnv(gym.Env):
 
         from rl.rewards.multi_objective import apply_curriculum_action_mask, CURRICULUM_ENABLED
         if CURRICULUM_ENABLED:
-            curriculum_mask = apply_curriculum_action_mask(self._global_timestep)
+            curr_wave = int(self._prev_state.get("wave", 0))
+            curriculum_mask = apply_curriculum_action_mask(self._global_timestep, wave=curr_wave)
             for i in range(NUM_ACTION_TYPES):
                 if not curriculum_mask[i]:
                     resource_mask[i] = False

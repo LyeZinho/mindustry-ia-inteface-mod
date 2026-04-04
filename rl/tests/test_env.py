@@ -412,3 +412,29 @@ def test_execute_delete_sends_correct_command(monkeypatch):
     expected_x = 10 + SLOT_DX[slot]
     expected_y = 10 + SLOT_DY[slot]
     assert commands == [f"DELETE;{expected_x};{expected_y}"]
+
+
+def test_action_masks_wave3_unlocks_turret(monkeypatch):
+    """action_masks passes wave from prev_state to curriculum gating."""
+    import numpy as np
+    from rl.env.mindustry_env import MindustryEnv
+    from rl.env.spaces import ACTION_BUILD_TURRET, NUM_ACTION_TYPES, NUM_SLOTS
+
+    env = MindustryEnv.__new__(MindustryEnv)
+    env._global_timestep = 0
+    env._prev_state = {
+        "wave": 3,
+        "player": {"x": 10, "y": 10, "alive": True},
+        "resources": {"copper": 500},
+        "buildings": [], "grid": [], "blockedTiles": [], "oreGrid": [],
+    }
+
+    import rl.rewards.multi_objective as mo
+    orig = mo.CURRICULUM_ENABLED
+    mo.CURRICULUM_ENABLED = True
+    try:
+        mask = env.action_masks()
+    finally:
+        mo.CURRICULUM_ENABLED = orig
+
+    assert mask[ACTION_BUILD_TURRET] == True
