@@ -113,10 +113,19 @@ def _action_idx(name: str) -> int:
             return i
     raise ValueError(f"Unknown action: {name}")
 
-ACTION_WAIT   = _action_idx("WAIT")
-ACTION_MOVE   = _action_idx("MOVE")
-ACTION_REPAIR = _action_idx("REPAIR")
-ACTION_DELETE = _action_idx("DELETE")
+ACTION_WAIT                = _action_idx("WAIT")
+ACTION_MOVE                = _action_idx("MOVE")
+ACTION_BUILD_TURRET        = _action_idx("BUILD_TURRET")
+ACTION_BUILD_WALL          = _action_idx("BUILD_WALL")
+ACTION_BUILD_POWER         = _action_idx("BUILD_POWER")
+ACTION_BUILD_DRILL         = _action_idx("BUILD_DRILL")
+ACTION_REPAIR              = _action_idx("REPAIR")
+ACTION_BUILD_CONVEYOR      = _action_idx("BUILD_CONVEYOR")
+ACTION_BUILD_GRAPHITE_PRESS = _action_idx("BUILD_GRAPHITE_PRESS")
+ACTION_BUILD_SILICON_SMELTER = _action_idx("BUILD_SILICON_SMELTER")
+ACTION_BUILD_COMBUSTION_GEN = _action_idx("BUILD_COMBUSTION_GEN")
+ACTION_BUILD_PNEUMATIC_DRILL = _action_idx("BUILD_PNEUMATIC_DRILL")
+ACTION_DELETE              = _action_idx("DELETE")
 
 BLOCK_TURRET = ACTION_REGISTRY[_action_idx("BUILD_TURRET")].block
 BLOCK_WALL   = ACTION_REGISTRY[_action_idx("BUILD_WALL")].block

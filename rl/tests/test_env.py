@@ -378,8 +378,9 @@ def test_action_masks_respects_curriculum_phase0(monkeypatch):
     assert action_mask[0] is True or bool(action_mask[0]) is True
     assert action_mask[1] is True or bool(action_mask[1]) is True
     assert action_mask[5] is True or bool(action_mask[5]) is True
+    assert action_mask[7] is True or bool(action_mask[7]) is True
     assert bool(action_mask[2]) is False
-    assert bool(action_mask[7]) is False
+    assert bool(action_mask[4]) is False
 
 
 def test_env_has_global_timestep_attribute():

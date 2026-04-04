@@ -39,10 +39,10 @@ CURRICULUM LEARNING (ENABLED)
 ================================================================================
 
 4-phase curriculum for 13 actions:
-  Phase 0 (0-100k steps):    WAIT, MOVE, BUILD_DRILL, DELETE
-  Phase 1 (100k-300k steps): Add BUILD_CONVEYOR, DELETE
-  Phase 2 (300k-600k steps): Add defense + power + processing + DELETE
-  Phase 3 (600k+ steps):     All 13 actions
+  Phase 0 bootstrap  (always):           WAIT, MOVE, DRILL, CONVEYOR, DELETE
+  Phase 1 drill_defend (wave≥3 OR 30k):  + WALL, TURRET
+  Phase 2 advanced   (wave≥5 OR 100k):  + POWER, REPAIR, PNEUMATIC_DRILL, COMBUSTION_GEN
+  Phase 3 full       (wave≥8 OR 300k):  all 13
 
 ================================================================================
 KEY DESIGN DECISIONS
@@ -97,18 +97,19 @@ ACTION_BUILD_PNEUMATIC_DRILL = _action_idx("BUILD_PNEUMATIC_DRILL")
 ACTION_DELETE = _action_idx("DELETE")
 
 CURRICULUM_PHASES = [
-    ("mining_only", (0, 100_000), [
-        ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_DELETE,
-    ]),
-    ("drill_connect", (100_000, 300_000), [
+    ("bootstrap", (0, 0), [
         ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR, ACTION_DELETE,
     ]),
-    ("defense_power", (300_000, 600_000), [
+    ("drill_defend", (30_000, 3), [
         ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR,
-        ACTION_BUILD_POWER, ACTION_BUILD_WALL, ACTION_BUILD_TURRET,
-        ACTION_REPAIR, ACTION_BUILD_GRAPHITE_PRESS, ACTION_BUILD_COMBUSTION_GEN, ACTION_DELETE,
+        ACTION_BUILD_WALL, ACTION_BUILD_TURRET, ACTION_DELETE,
     ]),
-    ("full", (600_000, float('inf')), list(range(13))),
+    ("advanced", (100_000, 5), [
+        ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR,
+        ACTION_BUILD_WALL, ACTION_BUILD_TURRET, ACTION_BUILD_POWER,
+        ACTION_REPAIR, ACTION_BUILD_PNEUMATIC_DRILL, ACTION_BUILD_COMBUSTION_GEN, ACTION_DELETE,
+    ]),
+    ("full", (300_000, 8), list(range(13))),
 ]
 
 # ============================================================================
@@ -118,10 +119,10 @@ CURRICULUM_PHASES = [
 # Curriculum starts economy-heavy (mine!) and gradually adds survival/defense.
 
 _REWARD_WEIGHT_PHASES = [
-    ("mining_only",   (0,         100_000),         {"survival": 0.3, "economy": 1.0, "defense": 0.1, "build": 0.2}),
-    ("drill_connect", (100_000,   300_000),          {"survival": 0.5, "economy": 0.8, "defense": 0.3, "build": 0.4}),
-    ("defense_power", (300_000,   600_000),          {"survival": 0.8, "economy": 0.6, "defense": 0.8, "build": 0.5}),
-    ("full",          (600_000,   float("inf")),     {"survival": 0.8, "economy": 0.8, "defense": 0.8, "build": 0.6}),
+    ("bootstrap",    (0,         30_000),         {"survival": 0.3, "economy": 1.0, "defense": 0.1, "build": 0.2}),
+    ("drill_defend", (30_000,    100_000),         {"survival": 0.5, "economy": 0.8, "defense": 0.3, "build": 0.4}),
+    ("advanced",     (100_000,   300_000),         {"survival": 0.8, "economy": 0.6, "defense": 0.8, "build": 0.5}),
+    ("full",         (300_000,   float("inf")),    {"survival": 0.8, "economy": 0.8, "defense": 0.8, "build": 0.6}),
 ]
 
 
@@ -468,23 +469,23 @@ def compute_reward(
 
 def apply_curriculum_action_mask(
     timestep: int,
+    wave: int = 0,
 ) -> list[bool]:
     from rl.env.spaces import NUM_ACTION_TYPES
 
     if not CURRICULUM_ENABLED:
         return [True] * NUM_ACTION_TYPES
 
-    current_phase_actions = list(range(NUM_ACTION_TYPES))
+    current_phase_actions = CURRICULUM_PHASES[0][2]
 
-    for _phase_name, (start, end), actions in CURRICULUM_PHASES:
-        if start <= timestep < end:
+    for _phase_name, (ts_threshold, wave_threshold), actions in CURRICULUM_PHASES:
+        if timestep >= ts_threshold or wave >= wave_threshold:
             current_phase_actions = actions
-            break
 
     mask = [False] * NUM_ACTION_TYPES
     for action_idx in current_phase_actions:
-        mask[action_idx] = True
-
+        if 0 <= action_idx < NUM_ACTION_TYPES:
+            mask[action_idx] = True
     return mask
 
 

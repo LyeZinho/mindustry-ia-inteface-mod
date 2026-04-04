@@ -337,9 +337,9 @@ def test_curriculum_constants_exist():
     assert ACTION_REPAIR == 6
 
     assert len(CURRICULUM_PHASES) == 4
-    assert CURRICULUM_PHASES[0][0] == "mining_only"
-    assert CURRICULUM_PHASES[1][0] == "drill_connect"
-    assert CURRICULUM_PHASES[2][0] == "defense_power"
+    assert CURRICULUM_PHASES[0][0] == "bootstrap"
+    assert CURRICULUM_PHASES[1][0] == "drill_defend"
+    assert CURRICULUM_PHASES[2][0] == "advanced"
     assert CURRICULUM_PHASES[3][0] == "full"
     assert CURRICULUM_ENABLED is True
 
@@ -444,23 +444,27 @@ def test_curriculum_phase0_allows_only_3_actions():
     assert mask[0] is True
     assert mask[1] is True
     assert mask[5] is True
+    assert mask[7] is True  # CONVEYOR now in phase0
     assert mask[2] is False
-    assert mask[7] is False
+    assert mask[4] is False
 
 
 def test_curriculum_phase1_adds_conveyor():
     from rl.rewards.multi_objective import apply_curriculum_action_mask
-    mask = apply_curriculum_action_mask(timestep=150000)
-    assert mask[7] is True
-    assert mask[2] is False
+    mask = apply_curriculum_action_mask(timestep=50000)
+    assert mask[7] is True  # CONVEYOR
+    assert mask[2] is True  # TURRET (now in phase1)
+    assert mask[3] is True  # WALL (now in phase1)
+    assert mask[4] is False  # POWER not yet
 
 
 def test_curriculum_phase2_adds_defense():
     from rl.rewards.multi_objective import apply_curriculum_action_mask
-    mask = apply_curriculum_action_mask(timestep=400000)
-    assert mask[2] is True
-    assert mask[4] is True
-    assert mask[9] is False
+    mask = apply_curriculum_action_mask(timestep=150000)
+    assert mask[2] is True  # TURRET
+    assert mask[4] is True  # POWER
+    assert mask[8] is False  # GRAPHITE_PRESS not in any phase
+    assert mask[9] is False  # SILICON_SMELTER not in any phase
 
 
 def test_curriculum_phase3_all_actions():
@@ -553,4 +557,47 @@ def test_curriculum_full_phase_has_13_actions():
     from rl.rewards.multi_objective import apply_curriculum_action_mask
     from rl.env.spaces import NUM_ACTION_TYPES
     mask = apply_curriculum_action_mask(timestep=700_000)
+    assert sum(mask) == NUM_ACTION_TYPES
+
+
+def test_curriculum_phase0_includes_conveyor():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import ACTION_BUILD_CONVEYOR
+    mask = apply_curriculum_action_mask(timestep=0, wave=0)
+    assert mask[ACTION_BUILD_CONVEYOR] is True
+
+
+def test_curriculum_wave3_unlocks_turret_and_wall():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import ACTION_BUILD_TURRET, ACTION_BUILD_WALL
+    mask = apply_curriculum_action_mask(timestep=0, wave=3)
+    assert mask[ACTION_BUILD_TURRET] is True
+    assert mask[ACTION_BUILD_WALL] is True
+
+
+def test_curriculum_wave2_does_not_unlock_turret():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import ACTION_BUILD_TURRET
+    mask = apply_curriculum_action_mask(timestep=0, wave=2)
+    assert mask[ACTION_BUILD_TURRET] is False
+
+
+def test_curriculum_timestep30k_unlocks_turret():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import ACTION_BUILD_TURRET
+    mask = apply_curriculum_action_mask(timestep=30_000, wave=0)
+    assert mask[ACTION_BUILD_TURRET] is True
+
+
+def test_curriculum_wave5_unlocks_power():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import ACTION_BUILD_POWER
+    mask = apply_curriculum_action_mask(timestep=0, wave=5)
+    assert mask[ACTION_BUILD_POWER] is True
+
+
+def test_curriculum_wave8_unlocks_all():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import NUM_ACTION_TYPES
+    mask = apply_curriculum_action_mask(timestep=0, wave=8)
     assert sum(mask) == NUM_ACTION_TYPES
