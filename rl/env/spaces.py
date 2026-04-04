@@ -452,7 +452,17 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
         if i == ACTION_REPAIR:
             if len(buildings) == 0:
                 mask[i] = False
-            # Don't mask slots for REPAIR — any friendly building can be repaired
+            continue
+        
+        if i == ACTION_DELETE:
+            ally_demolishable = {
+                (int(b.get("x", 0)), int(b.get("y", 0))): b.get("block", "")
+                for b in buildings
+                if b.get("team", "") in ALLY_TEAMS
+                and "core" not in b.get("block", "")
+            }
+            if not ally_demolishable:
+                mask[i] = False
             continue
         
         # Check resource availability for this action type
@@ -472,5 +482,17 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
                 if block_at_target != "air" or is_building_at_target or (target_x, target_y) in blocked_set:
                     slot_mask_idx = NUM_ACTION_TYPES + slot
                     mask[slot_mask_idx] = False
+
+    if mask[ACTION_DELETE]:
+        ally_demolishable = {
+            (int(b.get("x", 0)), int(b.get("y", 0))): b.get("block", "")
+            for b in buildings
+            if b.get("team", "") in ALLY_TEAMS
+            and "core" not in b.get("block", "")
+        }
+        for slot in range(NUM_SLOTS):
+            target_x = player_x + SLOT_DX[slot]
+            target_y = player_y + SLOT_DY[slot]
+            mask[NUM_ACTION_TYPES + slot] = (target_x, target_y) in ally_demolishable
 
     return mask

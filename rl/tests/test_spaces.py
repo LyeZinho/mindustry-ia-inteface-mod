@@ -152,11 +152,10 @@ def test_action_mask_with_enough_resources():
     rich_state = {
         **MINIMAL_STATE,
         "resources": {"copper": 100, "lead": 100, "graphite": 50},
-        "buildings": [{"block": "duo", "hp": 0.5}],
+        "buildings": [{"block": "duo", "hp": 0.5, "team": "sharded", "x": 16, "y": 17}],
     }
     mask = compute_action_mask(rich_state)
     assert np.all(mask[:NUM_ACTION_TYPES] == True)
-    assert np.all(mask[NUM_ACTION_TYPES:] == True)
 
 
 def test_action_mask_partial_resources():
@@ -376,3 +375,63 @@ def test_delete_action_mask_fn_always_true():
     from rl.env.spaces import ACTION_REGISTRY, ACTION_DELETE
     assert ACTION_REGISTRY[ACTION_DELETE].mask_fn({}) is True
     assert ACTION_REGISTRY[ACTION_DELETE].mask_fn({"copper": 0}) is True
+
+
+def _state_with_building(block="mechanical-drill", ally=True):
+    from rl.env.spaces import SLOT_DX, SLOT_DY
+    team = "sharded" if ally else "crux"
+    px, py = 10, 10
+    bx = px + SLOT_DX[4]
+    by = py + SLOT_DY[4]
+    return {
+        "player": {"x": px, "y": py, "alive": True},
+        "resources": {"copper": 500},
+        "buildings": [{"x": bx, "y": by, "block": block, "team": team, "hp": 1.0}],
+        "grid": [], "blockedTiles": [], "oreGrid": [],
+    }
+
+
+def test_delete_masked_when_no_ally_building_at_slot():
+    from rl.env.spaces import compute_action_mask, ACTION_DELETE
+    state = _state_with_building()
+    state["buildings"] = []
+    mask = compute_action_mask(state)
+    assert bool(mask[ACTION_DELETE]) is False
+
+
+def test_delete_unmasked_when_ally_building_at_slot():
+    from rl.env.spaces import compute_action_mask, ACTION_DELETE
+    state = _state_with_building()
+    mask = compute_action_mask(state)
+    assert bool(mask[ACTION_DELETE]) is True
+
+
+def test_delete_slot_masked_when_no_building_at_that_slot():
+    from rl.env.spaces import compute_action_mask, ACTION_DELETE, NUM_ACTION_TYPES
+    state = _state_with_building()
+    mask = compute_action_mask(state)
+    assert bool(mask[NUM_ACTION_TYPES + 0]) is False
+    assert bool(mask[NUM_ACTION_TYPES + 4]) is True
+
+
+def test_delete_core_slot_always_masked():
+    from rl.env.spaces import compute_action_mask, ACTION_DELETE, NUM_ACTION_TYPES, SLOT_DX, SLOT_DY
+    px, py = 10, 10
+    bx = px + SLOT_DX[4]
+    by = py + SLOT_DY[4]
+    state = {
+        "player": {"x": px, "y": py, "alive": True},
+        "resources": {"copper": 500},
+        "buildings": [{"x": bx, "y": by, "block": "core-sharded", "team": "sharded", "hp": 1.0}],
+        "grid": [], "blockedTiles": [], "oreGrid": [],
+    }
+    mask = compute_action_mask(state)
+    assert bool(mask[ACTION_DELETE]) is False
+    assert bool(mask[NUM_ACTION_TYPES + 4]) is False
+
+
+def test_delete_enemy_building_not_counted():
+    from rl.env.spaces import compute_action_mask, ACTION_DELETE
+    state = _state_with_building(ally=False)
+    mask = compute_action_mask(state)
+    assert bool(mask[ACTION_DELETE]) is False
