@@ -127,7 +127,7 @@ def test_build_fail_penalty():
     state_fail["actionFailed"] = True
     reward_ok = compute_reward(BASE, state_ok, done=False)
     reward_fail = compute_reward(BASE, state_fail, done=False)
-    assert abs(reward_fail - reward_ok - (-0.15)) < 1e-6
+    assert abs(reward_fail - reward_ok - (-0.05)) < 1e-6
 
 
 def test_reward_manual_mining_reward():
@@ -504,3 +504,25 @@ def test_curriculum_weights_phase_0():
 def test_curriculum_weights_full_phase():
     weights = get_curriculum_reward_weights(timestep=700_000)
     assert weights["survival"] >= 0.8
+
+
+def test_action_failed_penalty_is_0_05():
+    from rl.rewards.multi_objective import compute_reward
+    base_state = {
+        "core": {"hp": 0.8}, "wave": 1, "resources": {"copper": 100},
+        "power": {"produced": 0, "consumed": 0, "stored": 0, "capacity": 1},
+        "buildings": [], "player": {"alive": True},
+    }
+    r_failed = compute_reward(base_state, {**base_state, "actionFailed": True}, done=False, timestep=0)
+    r_ok     = compute_reward(base_state, {**base_state, "actionFailed": False}, done=False, timestep=0)
+    diff = r_ok - r_failed
+    assert abs(diff - 0.05) < 1e-6, f"Expected diff=0.05, got {diff}"
+
+
+def test_resource_bleeding_penalty_threshold_is_50():
+    from rl.rewards.multi_objective import _detect_resource_bleeding_penalty
+    prev = {"buildings": [], "resources": {"copper": 200}}
+    curr_small = {"buildings": [{"x": 1, "y": 1, "block": "duo", "team": "sharded"}], "resources": {"copper": 155}}
+    assert _detect_resource_bleeding_penalty(prev, curr_small) == 0.0
+    curr_big = {"buildings": [{"x": 1, "y": 1, "block": "duo", "team": "sharded"}], "resources": {"copper": 100}}
+    assert _detect_resource_bleeding_penalty(prev, curr_big) == -0.10

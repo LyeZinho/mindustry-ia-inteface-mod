@@ -32,7 +32,7 @@ Inactivity Penalties (NEW):
 Terminal Penalties:
   core destroyed        → -0.4
   player dead, core ok  → -0.5
-  action failed         → -0.15
+  action failed         → -0.05
 
 ================================================================================
 CURRICULUM LEARNING (ENABLED)
@@ -261,7 +261,7 @@ def _detect_action_repetition_penalty(
 def _detect_resource_bleeding_penalty(
     prev_state: Dict[str, Any],
     curr_state: Dict[str, Any],
-    bleeding_threshold: float = -10.0,
+    bleeding_threshold: float = -50.0,
 ) -> float:
     """
     Penalize building structures that cost more resources than collected.
@@ -272,7 +272,7 @@ def _detect_resource_bleeding_penalty(
     Args:
         prev_state: Game state at t-1
         curr_state: Game state at t
-        bleeding_threshold: If resources_delta < this, apply penalty (default -10)
+        bleeding_threshold: If resources_delta < this, apply penalty (default -50)
 
     Returns:
         Penalty (negative) or 0.0
@@ -460,7 +460,7 @@ def compute_reward(
     )
 
     if bool(curr_state.get("actionFailed", False)):
-        reward -= 0.15
+        reward -= 0.05
 
     return float(reward)
 
