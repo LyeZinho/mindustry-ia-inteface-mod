@@ -21,6 +21,7 @@ from stable_baselines3.common.callbacks import (
 )
 
 from rl.env.spaces import ACTION_NAMES, NUM_ACTION_TYPES
+from rl.env.spaces import GRID_CHANNELS, OBS_FEATURES_DIM
 
 
 def _write_metrics_json(path: Path, metrics: Dict[str, Any]) -> None:
@@ -68,6 +69,7 @@ class LiveMetricsCallback(BaseCallback):
         self._metrics_path = Path(metrics_path)
         self._step_latencies: deque = deque(maxlen=history_len)
         self._value_history: List[float] = []
+        self._head_value_history: List[List[float]] = []
         self._power_history: List[Dict[str, float]] = []
         self._building_history: List[int] = []
         self._last_resources: Dict[str, float] = {}
@@ -106,6 +108,19 @@ class LiveMetricsCallback(BaseCallback):
             if info.get("build_failed", False):
                 self._rollout_build_fails += 1
             self._episode_infos.append(info)
+
+        try:
+            policy = self.model.policy
+            if hasattr(policy, "get_head_values"):
+                obs_tensor = self.locals.get("obs_tensor")
+                if obs_tensor is not None:
+                    head_vals = policy.get_head_values(obs_tensor)
+                    self._head_value_history.append([float(v) for v in head_vals])
+                    if len(self._head_value_history) > 200:
+                        self._head_value_history = self._head_value_history[-200:]
+        except Exception:
+            pass
+
         return True
 
     def _on_rollout_end(self) -> None:
@@ -141,6 +156,7 @@ class LiveMetricsCallback(BaseCallback):
             "timestamp": datetime.now().isoformat(),
             "policy": policy_data,
             "episode_metrics": episode_data,
+            "critic_heads": self._head_value_history[-50:],
             "world": {
                 "resources": self._last_resources,
                 "resource_deltas": resource_deltas,
@@ -233,6 +249,29 @@ class LiveMetricsCallback(BaseCallback):
             }
 
 
+class MetadataSaverCallback(BaseCallback):
+    def __init__(self, save_path: str, save_freq: int = 10_000, verbose: int = 0) -> None:
+        super().__init__(verbose)
+        self._save_path = Path(save_path)
+        self._save_freq = save_freq
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps % self._save_freq == 0:
+            meta = {
+                "grid_channels": GRID_CHANNELS,
+                "obs_features_dim": OBS_FEATURES_DIM,
+                "total_timesteps": self.num_timesteps,
+                "policy": "MindustryActorCriticPolicy",
+            }
+            path = self._save_path / f"metadata_{self.num_timesteps}_steps.json"
+            try:
+                self._save_path.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(meta, indent=2))
+            except OSError:
+                pass
+        return True
+
+
 def make_callbacks(
     save_path: str = "rl/models",
     logs_dir: str = "rl/logs",
@@ -251,4 +290,5 @@ def make_callbacks(
         metrics_path=str(Path(logs_dir) / "live_metrics.json"),
         verbose=verbose,
     )
-    return CallbackList([checkpoint_cb, reward_logger, live_metrics])
+    metadata_saver = MetadataSaverCallback(save_path=save_path, save_freq=save_freq, verbose=verbose)
+    return CallbackList([checkpoint_cb, reward_logger, live_metrics, metadata_saver])
