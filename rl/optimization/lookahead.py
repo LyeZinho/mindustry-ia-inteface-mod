@@ -25,48 +25,66 @@ BUILDING_INCOME = {
 
 def compute_lookahead_scores(state: dict) -> np.ndarray:
     scores = np.zeros(NUM_ACTION_TYPES, dtype=np.float32)
-    
+
     player = state.get("player", {})
     if not player.get("alive", False):
         return scores
-    
+
+    existing_income: dict = {}
+    for building in state.get("buildings", []):
+        block = building.get("block", "")
+        for res, val in BUILDING_INCOME.get(block, {}).items():
+            if res != "power_delta":
+                existing_income[res] = existing_income.get(res, 0.0) + val
+
     for action_idx, action_def in enumerate(ACTION_REGISTRY):
         sim_state = copy.deepcopy(state)
         total_score = 0.0
-        
+
+        if action_def.block is None:
+            ally_buildings = [
+                b for b in state.get("buildings", [])
+                if b.get("team", "") == "sharded" and "core" not in b.get("block", "")
+            ]
+            if ally_buildings:
+                total_score = 0.5
+            scores[action_idx] = math.log(1 + total_score) / math.log(1 + 10.0)
+            continue
+
         for step in range(3):
-            if action_def.block is None:
-                pass
-            else:
-                block_name = action_def.block
-                cost = BUILD_COSTS.get(block_name, {})
-                
-                resources = sim_state.get("resources", {})
-                can_afford = all(
-                    resources.get(res_name, 0) >= res_cost
-                    for res_name, res_cost in cost.items()
-                )
-                
-                if can_afford:
-                    total_score += 1.0
-                    
-                    for res_name, res_cost in cost.items():
-                        resources[res_name] = resources.get(res_name, 0) - res_cost
-                    
-                    income = BUILDING_INCOME.get(block_name, {})
-                    for income_res, income_val in income.items():
-                        if income_res == "power_delta":
-                            power = sim_state.get("power", {})
-                            power["produced"] = power.get("produced", 0.0) + income_val
-                            total_score += 0.1 * income_val / 60.0
-                        else:
-                            resources[income_res] = resources.get(income_res, 0) + income_val
-                            total_score += 0.1 * income_val
-        
+            resources = sim_state.get("resources", {})
+            for res, val in existing_income.items():
+                resources[res] = resources.get(res, 0.0) + val
+                total_score += 0.1 * val
+
+            block_name = action_def.block
+            cost = BUILD_COSTS.get(block_name, {})
+
+            can_afford = all(
+                resources.get(res_name, 0) >= res_cost
+                for res_name, res_cost in cost.items()
+            )
+
+            if can_afford:
+                total_score += 1.0
+
+                for res_name, res_cost in cost.items():
+                    resources[res_name] = resources.get(res_name, 0) - res_cost
+
+                income = BUILDING_INCOME.get(block_name, {})
+                for income_res, income_val in income.items():
+                    if income_res == "power_delta":
+                        power = sim_state.get("power", {})
+                        power["produced"] = power.get("produced", 0.0) + income_val
+                        total_score += 0.1 * income_val / 60.0
+                    else:
+                        resources[income_res] = resources.get(income_res, 0) + income_val
+                        total_score += 0.1 * income_val
+
         power = sim_state.get("power", {})
         if power.get("produced", 0.0) > power.get("consumed", 0.0):
             total_score += 0.2
-        
+
         scores[action_idx] = math.log(1 + total_score) / math.log(1 + 10.0)
-    
+
     return scores

@@ -33,3 +33,29 @@ def test_wait_scores_lower_than_build():
     WAIT_IDX = 0
     BUILD_DRILL_IDX = 5
     assert scores[WAIT_IDX] < scores[BUILD_DRILL_IDX]
+
+def test_existing_drills_increase_lookahead_score():
+    """An agent with placed drills should see higher lookahead score for build actions
+    (more resources available in future steps) than one without drills."""
+    from rl.optimization.lookahead import compute_lookahead_scores
+    from rl.env.spaces import ACTION_BUILD_DRILL
+
+    base_state = {
+        "player": {"x": 10, "y": 10, "alive": True},
+        "resources": {"copper": 50},
+        "buildings": [],
+        "power": {"produced": 0.0, "consumed": 0.0},
+        "oreGrid": [],
+    }
+    state_with_drills = {
+        **base_state,
+        "buildings": [
+            {"block": "mechanical-drill", "team": "sharded", "x": 11, "y": 11},
+            {"block": "mechanical-drill", "team": "sharded", "x": 12, "y": 11},
+        ],
+    }
+
+    scores_no_drills = compute_lookahead_scores(base_state)
+    scores_with_drills = compute_lookahead_scores(state_with_drills)
+
+    assert scores_with_drills[ACTION_BUILD_DRILL] > scores_no_drills[ACTION_BUILD_DRILL]
