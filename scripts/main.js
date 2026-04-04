@@ -1095,8 +1095,8 @@ function handleResetCommand(parts) {
             // Enable waves and set fast timers so enemies spawn quickly during training
             Vars.state.rules.waves = true;
             Vars.state.rules.waveSpacing = 1800; // 30 seconds between waves
-            Vars.state.wavetime = 60; // first wave in 1 game second
-            Log.info("[Mimi Gateway] waves enabled, waveSpacing=1800, wavetime=60");
+            Vars.state.wavetime = 1800; // first wave in 30 game seconds (matches waveSpacing)
+            Log.info("[Mimi Gateway] waves enabled, waveSpacing=1800, wavetime=1800");
 
             // Spawn player unit (poly) at core position
             Core.app.post(() => {
