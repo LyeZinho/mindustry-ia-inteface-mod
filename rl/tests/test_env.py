@@ -73,43 +73,43 @@ def test_step_move_sends_player_move_command():
 
 
 def test_step_build_turret_sends_player_build():
-    """action_type=2 sends PLAYER_BUILD;duo;slot."""
+    """action_type=2 sends PLAYER_BUILD;duo;slot;rotation."""
     client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
     env = MindustryEnv(client=client)
     env.reset()
     action = np.array([2, 4], dtype=np.int64)  # BUILD_TURRET slot=4
     env.step(action)
-    client.send_command.assert_any_call("PLAYER_BUILD;duo;4")
+    client.send_command.assert_any_call("PLAYER_BUILD;duo;4;0")
 
 
 def test_step_build_wall_sends_player_build():
-    """action_type=3 sends PLAYER_BUILD;copper-wall;slot."""
+    """action_type=3 sends PLAYER_BUILD;copper-wall;slot;rotation."""
     client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
     env = MindustryEnv(client=client)
     env.reset()
     action = np.array([3, 0], dtype=np.int64)
     env.step(action)
-    client.send_command.assert_any_call("PLAYER_BUILD;copper-wall;0")
+    client.send_command.assert_any_call("PLAYER_BUILD;copper-wall;0;0")
 
 
 def test_step_build_power_sends_player_build():
-    """action_type=4 sends PLAYER_BUILD;solar-panel;slot."""
+    """action_type=4 sends PLAYER_BUILD;solar-panel;slot;rotation."""
     client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
     env = MindustryEnv(client=client)
     env.reset()
     action = np.array([4, 1], dtype=np.int64)
     env.step(action)
-    client.send_command.assert_any_call("PLAYER_BUILD;solar-panel;1")
+    client.send_command.assert_any_call("PLAYER_BUILD;solar-panel;1;0")
 
 
 def test_step_build_drill_sends_player_build():
-    """action_type=5 sends PLAYER_BUILD;mechanical-drill;slot."""
+    """action_type=5 sends PLAYER_BUILD;mechanical-drill;slot;rotation."""
     client = make_mock_client(states=[MOCK_STATE, MOCK_STATE, MOCK_STATE])
     env = MindustryEnv(client=client)
     env.reset()
     action = np.array([5, 2], dtype=np.int64)
     env.step(action)
-    client.send_command.assert_any_call("PLAYER_BUILD;mechanical-drill;2")
+    client.send_command.assert_any_call("PLAYER_BUILD;mechanical-drill;2;0")
 
 
 def test_step_repair_sends_player_build_repair():
@@ -324,7 +324,7 @@ def test_step_build_conveyor_sends_player_build():
     env.reset()
     action = np.array([7, 3], dtype=np.int64)
     env.step(action)
-    client.send_command.assert_any_call("PLAYER_BUILD;conveyor;3")
+    client.send_command.assert_any_call("PLAYER_BUILD;conveyor;3;0")
 
 
 def test_step_build_graphite_press_sends_player_build():
@@ -333,7 +333,7 @@ def test_step_build_graphite_press_sends_player_build():
     env.reset()
     action = np.array([8, 0], dtype=np.int64)
     env.step(action)
-    client.send_command.assert_any_call("PLAYER_BUILD;graphite-press;0")
+    client.send_command.assert_any_call("PLAYER_BUILD;graphite-press;0;0")
 
 
 def test_step_build_silicon_smelter_sends_player_build():
@@ -342,7 +342,7 @@ def test_step_build_silicon_smelter_sends_player_build():
     env.reset()
     action = np.array([9, 1], dtype=np.int64)
     env.step(action)
-    client.send_command.assert_any_call("PLAYER_BUILD;silicon-smelter;1")
+    client.send_command.assert_any_call("PLAYER_BUILD;silicon-smelter;1;0")
 
 
 def test_step_build_combustion_gen_sends_player_build():
@@ -351,7 +351,7 @@ def test_step_build_combustion_gen_sends_player_build():
     env.reset()
     action = np.array([10, 2], dtype=np.int64)
     env.step(action)
-    client.send_command.assert_any_call("PLAYER_BUILD;combustion-generator;2")
+    client.send_command.assert_any_call("PLAYER_BUILD;combustion-generator;2;0")
 
 
 def test_step_build_pneumatic_drill_sends_player_build():
@@ -360,7 +360,7 @@ def test_step_build_pneumatic_drill_sends_player_build():
     env.reset()
     action = np.array([11, 5], dtype=np.int64)
     env.step(action)
-    client.send_command.assert_any_call("PLAYER_BUILD;pneumatic-drill;5")
+    client.send_command.assert_any_call("PLAYER_BUILD;pneumatic-drill;5;0")
 
 
 def test_action_masks_respects_curriculum_phase0(monkeypatch):
@@ -438,3 +438,18 @@ def test_action_masks_wave3_unlocks_turret(monkeypatch):
         mo.CURRICULUM_ENABLED = orig
 
     assert mask[ACTION_BUILD_TURRET] == True
+
+
+def test_compute_build_rotation_toward_core():
+    from rl.env.mindustry_env import MindustryEnv
+    env = MindustryEnv.__new__(MindustryEnv)
+    env._prev_state = {
+        "player": {"x": 10, "y": 10, "alive": True},
+        "core": {"x": 5, "y": 10},
+    }
+    assert env._compute_build_rotation(4, "conveyor") == 2
+
+    env._prev_state["core"] = {"x": 10, "y": 15}
+    assert env._compute_build_rotation(4, "conveyor") == 1
+
+    assert env._compute_build_rotation(4, "mechanical-drill") == 0

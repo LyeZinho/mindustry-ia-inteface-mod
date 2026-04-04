@@ -305,6 +305,28 @@ class MindustryEnv(gym.Env):
         penalty_b = _detect_resource_bleeding_penalty(prev_state, curr_state)
         return int(penalty_a != 0.0), int(penalty_b != 0.0)
 
+    def _compute_build_rotation(self, slot: int, block: str) -> int:
+        """For conveyors: compute rotation toward core so items flow toward it.
+        Rotation: 0=right, 1=up, 2=left, 3=down. Other blocks always use 0."""
+        if block != "conveyor":
+            return 0
+        if self._prev_state is None:
+            return 0
+        player = self._prev_state.get("player", {})
+        player_x = int(player.get("x", 0))
+        player_y = int(player.get("y", 0))
+        target_x = player_x + SLOT_DX[slot % NUM_SLOTS]
+        target_y = player_y + SLOT_DY[slot % NUM_SLOTS]
+        core = self._prev_state.get("core", {})
+        core_x = int(core.get("x", target_x))
+        core_y = int(core.get("y", target_y))
+        dx = core_x - target_x
+        dy = core_y - target_y
+        if abs(dx) >= abs(dy):
+            return 0 if dx > 0 else 2  # right or left
+        else:
+            return 1 if dy > 0 else 3  # up or down
+
     def _execute_action(self, action_type: int, arg: int) -> None:
         if action_type == ACTION_WAIT:
             return
@@ -333,7 +355,8 @@ class MindustryEnv(gym.Env):
                         block, arg
                     )
                     return
-                self._client.send_command(f"PLAYER_BUILD;{block};{arg}")
+                rotation = self._compute_build_rotation(arg, block)
+                self._client.send_command(f"PLAYER_BUILD;{block};{arg};{rotation}")
                 return
         raise ValueError(f"Invalid action_type: {action_type}")
     
