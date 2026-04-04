@@ -315,3 +315,27 @@ def test_ore_in_slot_missing_slotsOreType_gives_zeros():
     state = {"core": {}, "resources": {}, "power": {}, "player": {}}
     obs = parse_observation(state)
     assert all(obs["features"][83:92] == 0.0)
+
+
+def test_build_drill_mask_matches_mod_cost():
+    """BUILD_DRILL mask should require exactly 12 copper (real Mindustry v7 cost).
+
+    Regression guard: Python mask must match what scripts/main.js blockCosts charges.
+    As of mimi-gateway-v1.0.6, mechanical-drill costs [["copper", 12]].
+    """
+    from rl.env.spaces import ACTION_REGISTRY, _action_idx
+
+    idx = _action_idx("BUILD_DRILL")
+    drill_def = ACTION_REGISTRY[idx]
+
+    # With exactly 12 copper and no lead/graphite — should be allowed
+    assert drill_def.mask_fn({"copper": 12, "lead": 0, "graphite": 0}) is True, \
+        "BUILD_DRILL should be allowed with exactly 12 copper"
+
+    # With 11 copper — should be blocked
+    assert drill_def.mask_fn({"copper": 11, "lead": 100, "graphite": 100}) is False, \
+        "BUILD_DRILL should be blocked with only 11 copper"
+
+    # Lead and graphite are NOT required
+    assert drill_def.mask_fn({"copper": 12, "lead": 0, "graphite": 0}) is True, \
+        "BUILD_DRILL should not require lead or graphite"
