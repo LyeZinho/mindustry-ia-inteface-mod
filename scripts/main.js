@@ -748,9 +748,11 @@ function handlePlayerBuildCommand(parts) {
         }
     }
 
+    let rotation = parts.length > 3 ? parseInt(parts[3]) : 0;
+    if (isNaN(rotation) || rotation < 0 || rotation > 3) rotation = 0;
     try {
-        tile.setNet(blockType, Team.sharded, 0);
-        Log.info("[Mimi Gateway] PLAYER_BUILD: " + blockName + " em (" + targetTileX + "," + targetTileY + ")");
+        tile.setNet(blockType, Team.sharded, rotation);
+        Log.info("[Mimi Gateway] PLAYER_BUILD: " + blockName + " em (" + targetTileX + "," + targetTileY + ") rotation=" + rotation);
     } catch (e) {
         Log.err("[Mimi Gateway] Erro ao construir: " + e);
     }
@@ -1319,6 +1321,32 @@ function handleResetCommand(parts) {
 Events.run(Trigger.update, () => {
     if (Vars.state.isGame()) {
         tickCounter++;
+    }
+});
+
+// Resource label for spectators: refresh every ~3s when human players present
+let resourceLabelTick = 0;
+Events.run(Trigger.update, () => {
+    if (!Vars.state.isGame()) return;
+    resourceLabelTick++;
+    if (resourceLabelTick % 180 !== 0) return;
+    try {
+        if (Groups.player.size() === 0) return;
+        let coreData = Team.sharded.data();
+        let core = coreData != null ? coreData.core() : null;
+        if (core == null || core.items == null) return;
+        let lines = [];
+        let names = ["copper", "lead", "graphite", "titanium", "thorium", "silicon", "coal", "sand"];
+        for (let i = 0; i < names.length; i++) {
+            let item = Vars.content.items().find(function(it) { return it.name === names[i]; });
+            if (item == null) continue;
+            let amt = core.items.get(item);
+            if (amt > 0) lines.push("[orange]" + names[i] + "[]: " + amt);
+        }
+        if (lines.length === 0) return;
+        let labelY = core.y + core.block.size * 8 + 32;
+        Call.label("[cyan]Resources[]\n" + lines.join("\n"), 3.5, core.x, labelY);
+    } catch(e) {
     }
 });
 
