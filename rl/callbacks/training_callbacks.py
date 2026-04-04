@@ -114,7 +114,7 @@ class LiveMetricsCallback(BaseCallback):
             if hasattr(policy, "get_head_values"):
                 obs_tensor = self.locals.get("obs_tensor")
                 if obs_tensor is not None:
-                    head_vals = policy.get_head_values(obs_tensor)
+                    head_vals = policy.get_head_values(obs_tensor).mean(dim=0)  # (4,)
                     self._head_value_history.append([float(v) for v in head_vals])
                     if len(self._head_value_history) > 200:
                         self._head_value_history = self._head_value_history[-200:]

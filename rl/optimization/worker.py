@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 import copy
@@ -6,6 +7,8 @@ from rl.optimization.placement import compute_placement_scores
 from rl.optimization.defense import compute_defense_gap
 from rl.optimization.power import compute_power_deficit
 from rl.optimization.lookahead import compute_lookahead_scores
+
+_logger = logging.getLogger(__name__)
 
 def _compute_build_order_priority(state: dict) -> np.ndarray:
     resources = state.get("resources", {})
@@ -69,22 +72,25 @@ class OptimizationWorker(threading.Thread):
                 self._pending_state = None
             
             if pending:
-                placement_scores = compute_placement_scores(pending)
-                lookahead_scores = compute_lookahead_scores(pending)
-                defense_gap = compute_defense_gap(pending)
-                power_deficit = compute_power_deficit(pending)
-                build_order_priority = _compute_build_order_priority(pending)
-                wave_threat = _compute_wave_threat(pending)
-                
-                with self._lock:
-                    self._result = {
-                        "placement_scores": placement_scores,
-                        "lookahead_scores": lookahead_scores,
-                        "defense_gap": defense_gap,
-                        "power_deficit": power_deficit,
-                        "build_order_priority": build_order_priority,
-                        "wave_threat_index": wave_threat,
-                    }
+                try:
+                    placement_scores = compute_placement_scores(pending)
+                    lookahead_scores = compute_lookahead_scores(pending)
+                    defense_gap = compute_defense_gap(pending)
+                    power_deficit = compute_power_deficit(pending)
+                    build_order_priority = _compute_build_order_priority(pending)
+                    wave_threat = _compute_wave_threat(pending)
+
+                    with self._lock:
+                        self._result = {
+                            "placement_scores": placement_scores,
+                            "lookahead_scores": lookahead_scores,
+                            "defense_gap": defense_gap,
+                            "power_deficit": power_deficit,
+                            "build_order_priority": build_order_priority,
+                            "wave_threat_index": wave_threat,
+                        }
+                except Exception as exc:
+                    _logger.warning("OptimizationWorker compute error: %s", exc)
             
             time.sleep(0.005)
     

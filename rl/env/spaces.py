@@ -57,6 +57,29 @@ MAX_FRIENDLY = 3
 ENEMY_FEATURES = 4      # hp, x, y, type_enc
 FRIENDLY_FEATURES = 3   # hp, x, y
 
+ENEMY_TYPE_IDS: dict[str, int] = {
+    "dagger": 1,
+    "crawler": 2,
+    "nova": 3,
+    "pulsar": 4,
+    "quasar": 5,
+    "atrax": 6,
+    "spiroct": 7,
+    "arkyid": 8,
+    "toxopid": 9,
+    "flare": 10,
+    "horizon": 11,
+    "zenith": 12,
+    "antumbra": 13,
+    "eclipse": 14,
+    "mono": 15,
+    "poly": 16,
+    "mega": 17,
+    "quad": 18,
+    "oct": 19,
+}
+_NUM_KNOWN_ENEMY_TYPES = 20
+
 ALLY_TEAMS = {"sharded", "player"}
 ENEMY_TEAMS = {"crux"}
 
@@ -272,7 +295,7 @@ def _parse_features(
         feat[offset] = float(e.get("hp", 0.0))
         feat[offset + 1] = float(e.get("x", 0)) / (GRID_SIZE - 1)
         feat[offset + 2] = float(e.get("y", 0)) / (GRID_SIZE - 1)
-        feat[offset + 3] = (abs(hash(e.get("type", ""))) % 20) / 20.0
+        feat[offset + 3] = ENEMY_TYPE_IDS.get(e.get("type", ""), 0) / _NUM_KNOWN_ENEMY_TYPES
 
     # Friendly units (top MAX_FRIENDLY, zero-padded)
     friendly = state.get("friendlyUnits", [])[:MAX_FRIENDLY]
