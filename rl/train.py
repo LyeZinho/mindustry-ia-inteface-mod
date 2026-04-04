@@ -12,6 +12,7 @@ Requires:
 from __future__ import annotations
 
 import argparse
+import json
 import signal
 import shutil
 from pathlib import Path
@@ -20,7 +21,9 @@ from typing import Callable
 from sb3_contrib import MaskablePPO
 
 from rl.env.mindustry_env import MindustryEnv
+from rl.env.spaces import GRID_CHANNELS, OBS_FEATURES_DIM
 from rl.callbacks.training_callbacks import make_callbacks
+from rl.models.custom_policy import MindustryActorCriticPolicy
 
 
 def _make_lr_schedule(lr_start: float, lr_end: float) -> Callable[[float], float]:
@@ -41,11 +44,22 @@ def _install_mod(mod_zip: str, server_data_dir: str) -> None:
 
 
 def _make_env_factory(host: str, tcp_port: int, max_steps: int, maps) -> Callable:
-    """Return a zero-arg callable that constructs one MindustryEnv (for SubprocVecEnv)."""
     def _factory():
         from rl.env.mindustry_env import MindustryEnv
         return MindustryEnv(host=host, tcp_port=tcp_port, max_steps=max_steps, maps=maps)
     return _factory
+
+
+def _save_metadata(models_dir: str, total_timesteps: int) -> None:
+    meta = {
+        "grid_channels": GRID_CHANNELS,
+        "obs_features_dim": OBS_FEATURES_DIM,
+        "total_timesteps": total_timesteps,
+        "policy": "MindustryActorCriticPolicy",
+    }
+    path = Path(models_dir) / "metadata_final.json"
+    path.write_text(json.dumps(meta, indent=2))
+    print(f"Metadata saved to {path}")
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -87,7 +101,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     p.add_argument(
         "--mod-zip",
-        default="mimi-gateway-v1.0.6.zip",
+        default="mimi-gateway-v1.0.7.zip",
         dest="mod_zip",
         help="Path to the Mimi Gateway mod zip to install",
     )
@@ -157,14 +171,13 @@ def main() -> None:
             )
 
         model = MaskablePPO(
-            policy="MultiInputPolicy",
+            policy=MindustryActorCriticPolicy,
             env=env,
             learning_rate=_make_lr_schedule(args.lr, args.lr_end),
             n_steps=args.n_steps,
             gamma=0.99,
             gae_lambda=0.95,
             ent_coef=0.05,
-            policy_kwargs={"net_arch": [256, 256]},
             verbose=1,
             tensorboard_log=args.logs_dir,
         )
@@ -177,6 +190,7 @@ def main() -> None:
         final_path = f"{args.models_dir}/final_model"
         model.save(final_path)
         env.save(f"{args.models_dir}/vecnormalize.pkl")
+        _save_metadata(args.models_dir, args.timesteps)
         print(f"Training complete. Model saved to {final_path}.zip")
 
     finally:
