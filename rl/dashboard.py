@@ -32,6 +32,8 @@ _PALETTE = {
 }
 
 _ACTION_LABELS = ACTION_NAMES
+_HEAD_NAMES = ["survival", "economy", "defense", "build"]
+_HEAD_COLORS = ["#f38ba8", "#a6e3a1", "#89b4fa", "#cba6f7"]
 
 
 def load_monitor_csv(source: str | io.StringIO) -> pd.DataFrame:
@@ -87,71 +89,67 @@ def _style_ax(ax, title: str, xlabel: str = "") -> None:
 
 
 def build_figure():
-    fig = plt.figure(figsize=(17, 18), facecolor=_PALETTE["bg_fig"])
-    fig.canvas.manager.set_window_title("Mindustry RL — Training Dashboard")
+    fig = plt.figure(figsize=(18, 22), facecolor=_PALETTE["bg_fig"])
+    try:
+        fig.canvas.manager.set_window_title("Mindustry RL — Training Dashboard")
+    except Exception:
+        pass
 
     gs = gridspec.GridSpec(
-        8, 3,
+        6, 3,
         figure=fig,
-        hspace=0.55,
-        wspace=0.38,
-        height_ratios=[2.5, 2.0, 2.0, 1.8, 1.8, 1.8, 1.8, 0.7],
+        hspace=0.60,
+        wspace=0.40,
+        height_ratios=[2.5, 2.5, 2.0, 2.0, 2.0, 0.5],
     )
 
     ax_reward   = fig.add_subplot(gs[0, 0])
     ax_length   = fig.add_subplot(gs[0, 1])
     ax_hist     = fig.add_subplot(gs[0, 2])
 
-    ax_action   = fig.add_subplot(gs[1, 0])
-    ax_value    = fig.add_subplot(gs[1, 1])
+    ax_3d       = fig.add_subplot(gs[1, 0], projection="3d")
+    ax_critic   = fig.add_subplot(gs[1, 1])
     ax_mask     = fig.add_subplot(gs[1, 2])
 
     ax_power    = fig.add_subplot(gs[2, 0])
     ax_latency  = fig.add_subplot(gs[2, 1])
     ax_counts   = fig.add_subplot(gs[2, 2])
 
-    ax_resources = fig.add_subplot(gs[3, :2])
-    ax_stability = fig.add_subplot(gs[3, 2])
+    ax_resources      = fig.add_subplot(gs[3, 0:2])
+    ax_stability      = fig.add_subplot(gs[3, 2])
 
-    ax_drill_rate_total = fig.add_subplot(gs[4, 0])
-    ax_drill_freq = fig.add_subplot(gs[4, 1])
-    ax_penalty_counts = fig.add_subplot(gs[4, 2])
+    ax_lookahead      = fig.add_subplot(gs[4, 0])
+    ax_placement      = fig.add_subplot(gs[4, 1])
+    ax_defense_gap    = fig.add_subplot(gs[4, 2])
 
-    ax_penalty_freq = fig.add_subplot(gs[5, 0])
-    ax_action_dist_ep = fig.add_subplot(gs[5, 1])
-    ax_action_dist_roll = fig.add_subplot(gs[5, 2])
-
-    ax_ext_resources = fig.add_subplot(gs[6, :])
-
-    ax_stats    = fig.add_subplot(gs[7, :])
+    ax_stats    = fig.add_subplot(gs[5, :])
     ax_stats.axis("off")
 
     axes = {
-        "reward":    ax_reward,
-        "length":    ax_length,
-        "hist":      ax_hist,
-        "action":    ax_action,
-        "value":     ax_value,
-        "mask":      ax_mask,
-        "power":     ax_power,
-        "latency":   ax_latency,
-        "counts":    ax_counts,
-        "resources": ax_resources,
-        "stability": ax_stability,
-        "drill_rate_total": ax_drill_rate_total,
-        "drill_freq": ax_drill_freq,
-        "penalty_counts": ax_penalty_counts,
-        "penalty_freq": ax_penalty_freq,
-        "action_dist_ep": ax_action_dist_ep,
-        "action_dist_roll": ax_action_dist_roll,
-        "ext_resources": ax_ext_resources,
-        "stats":     ax_stats,
+        "reward":       ax_reward,
+        "length":       ax_length,
+        "hist":         ax_hist,
+        "3d_surface":   ax_3d,
+        "critic":       ax_critic,
+        "mask":         ax_mask,
+        "power":        ax_power,
+        "latency":      ax_latency,
+        "counts":       ax_counts,
+        "resources":    ax_resources,
+        "stability":    ax_stability,
+        "lookahead":    ax_lookahead,
+        "placement":    ax_placement,
+        "defense_gap":  ax_defense_gap,
+        "stats":        ax_stats,
     }
     return fig, axes
 
 
 def make_updater(axes, csv_path: str, metrics_path: str, window: int):
-    _state: Dict[str, Any] = {"df": pd.DataFrame(columns=["r", "l", "t"])}
+    _state: Dict[str, Any] = {
+        "df": pd.DataFrame(columns=["r", "l", "t"]),
+        "metrics_history": [],
+    }
 
     def _waiting(ax, title: str) -> None:
         ax.cla()
@@ -173,15 +171,31 @@ def make_updater(axes, csv_path: str, metrics_path: str, window: int):
         _draw_hist(axes["hist"], df)
         _draw_stability(axes["stability"], df)
 
+        if metrics:
+            _state["metrics_history"].append(metrics)
+            if len(_state["metrics_history"]) > 200:
+                _state["metrics_history"] = _state["metrics_history"][-200:]
+
+        mh = _state["metrics_history"]
+
         policy = metrics.get("policy", {})
         if policy:
-            _draw_action_dist(axes["action"], policy)
-            _draw_value(axes["value"], policy)
             _draw_mask(axes["mask"], policy)
         else:
-            _waiting(axes["action"], "Distribuição de Ações")
-            _waiting(axes["value"], "Value Estimate")
             _waiting(axes["mask"], "Ações Bloqueadas")
+
+        critic_heads_all = []
+        for m in mh:
+            for entry in m.get("critic_heads", []):
+                if len(entry) == 4:
+                    critic_heads_all.append(entry)
+
+        if critic_heads_all:
+            _draw_3d_surface(axes["3d_surface"], critic_heads_all)
+            _draw_critic_heads(axes["critic"], critic_heads_all)
+        else:
+            _waiting(axes["3d_surface"], "3D Reward Surface")
+            _waiting(axes["critic"], "Critic Head Values")
 
         world = metrics.get("world", {})
         pipeline = metrics.get("pipeline", {})
@@ -196,35 +210,18 @@ def make_updater(axes, csv_path: str, metrics_path: str, window: int):
             _waiting(axes["counts"], "Buildings / Units")
             _waiting(axes["resources"], "Resource Throughput")
 
-        metrics_history = _state.get("metrics_history", [])
-        if metrics:
-            metrics_history.append(metrics)
-            if len(metrics_history) > 200:
-                metrics_history = metrics_history[-200:]
-            _state["metrics_history"] = metrics_history
-        _draw_extended_resources(axes["ext_resources"], metrics_history)
-
-        episode_metrics = metrics.get("episode_metrics", {})
-        if episode_metrics:
-            episode_metrics_list = _state.get("episode_metrics_history", [])
-            episode_metrics_list.append(episode_metrics)
-            if len(episode_metrics_list) > 200:
-                episode_metrics_list = episode_metrics_list[-200:]
-            _state["episode_metrics_history"] = episode_metrics_list
-            
-            _draw_drill_rate_total(axes["drill_rate_total"], episode_metrics_list)
-            _draw_drill_rate_frequency(axes["drill_freq"], episode_metrics_list)
-            _draw_penalty_counts(axes["penalty_counts"], episode_metrics_list)
-            _draw_penalty_frequency(axes["penalty_freq"], episode_metrics_list)
-            _draw_action_dist_per_episode(axes["action_dist_ep"], episode_metrics_list)
-            _draw_action_dist_rolling(axes["action_dist_roll"], episode_metrics_list)
+        if mh:
+            _draw_lookahead_heatmap(axes["lookahead"], mh)
         else:
-            _waiting(axes["drill_rate_total"], "Drills Built (Total)")
-            _waiting(axes["drill_freq"], "Drill Build Frequency (%)")
-            _waiting(axes["penalty_counts"], "Penalty Counts")
-            _waiting(axes["penalty_freq"], "Penalty Frequency (%)")
-            _waiting(axes["action_dist_ep"], "Action Distribution (Latest)")
-            _waiting(axes["action_dist_roll"], "Action Distribution (Rolling)")
+            _waiting(axes["lookahead"], "Lookahead Heatmap")
+
+        latest = metrics.get("world", {})
+        if latest:
+            _draw_placement_scores(axes["placement"], mh)
+            _draw_defense_gap(axes["defense_gap"], mh)
+        else:
+            _waiting(axes["placement"], "Placement Scores")
+            _waiting(axes["defense_gap"], "Defense Gap / Power Deficit")
 
         _draw_stats(axes["stats"], stats, metrics, window)
 
@@ -276,30 +273,51 @@ def _draw_stability(ax, df: pd.DataFrame, window: int = 20) -> None:
             fontsize=9, color=bar_color, fontweight="bold")
 
 
-def _draw_action_dist(ax, policy: Dict[str, Any]) -> None:
+def _draw_3d_surface(ax, head_history: list) -> None:
     ax.cla()
-    _style_ax(ax, "Distribuição de Ações")
-    dist = policy.get("action_type_distribution", [])
-    if not dist:
+    ax.set_facecolor(_PALETTE["bg_ax"])
+    ax.set_title("3D Reward Surface", color=_PALETTE["text"], fontsize=9, pad=4)
+
+    if len(head_history) < 10:
         return
-    colors = [_PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"],
-              _PALETTE["yellow"], _PALETTE["peach"], _PALETTE["green"], _PALETTE["purple"]]
-    xs = list(range(len(dist)))
-    ax.bar(xs, dist, color=colors[:len(dist)], edgecolor=_PALETTE["bg_fig"], width=0.7)
-    ax.set_xticks(xs)
-    ax.set_xticklabels(_ACTION_LABELS[:len(dist)], fontsize=6)
-    ax.set_ylim(0, 1)
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:.0%}"))
+
+    arr = np.array(head_history[-200:], dtype=np.float32)
+    economy  = arr[:, 1]
+    defense  = arr[:, 2]
+    survival = arr[:, 0]
+    build    = arr[:, 3]
+    combined = 0.8 * survival + 0.8 * economy + 0.8 * defense + 0.6 * build
+
+    try:
+        from scipy.interpolate import griddata
+        xi = np.linspace(economy.min(), economy.max(), 20)
+        yi = np.linspace(defense.min(), defense.max(), 20)
+        XI, YI = np.meshgrid(xi, yi)
+        ZI = griddata((economy, defense), combined, (XI, YI), method="linear")
+        mask = ~np.isnan(ZI)
+        if mask.any():
+            ax.plot_surface(
+                XI, YI, np.where(mask, ZI, 0),
+                cmap="RdYlGn", alpha=0.8, linewidth=0,
+            )
+    except Exception:
+        ax.scatter(economy, defense, combined, c=combined, cmap="RdYlGn", s=4, alpha=0.7)
+
+    ax.set_xlabel("Economy", color=_PALETTE["subtext"], fontsize=6)
+    ax.set_ylabel("Defense", color=_PALETTE["subtext"], fontsize=6)
+    ax.set_zlabel("Combined", color=_PALETTE["subtext"], fontsize=6)
+    ax.tick_params(colors=_PALETTE["text"], labelsize=5)
 
 
-def _draw_value(ax, policy: Dict[str, Any]) -> None:
+def _draw_critic_heads(ax, head_history: list) -> None:
     ax.cla()
-    _style_ax(ax, "Value Estimate", "Rollout")
-    history = policy.get("value_history", [])
-    if history:
-        ax.plot(history, color=_PALETTE["peach"], linewidth=1.5)
-        ax.axhline(policy.get("value_mean", 0.0), color=_PALETTE["red"],
-                   linewidth=1, linestyle="--", alpha=0.7)
+    _style_ax(ax, "Critic Head Values", "Step")
+    arr = np.array(head_history[-100:], dtype=np.float32)
+    xs = list(range(len(arr)))
+    for i, (name, color) in enumerate(zip(_HEAD_NAMES, _HEAD_COLORS)):
+        ax.plot(xs, arr[:, i], color=color, linewidth=1.2, label=name)
+    ax.legend(fontsize=6, labelcolor=_PALETTE["text"], facecolor=_PALETTE["bg_fig"],
+              loc="upper left", ncol=2)
 
 
 def _draw_mask(ax, policy: Dict[str, Any]) -> None:
@@ -307,7 +325,6 @@ def _draw_mask(ax, policy: Dict[str, Any]) -> None:
     _style_ax(ax, "Ações Bloqueadas / Build Fails")
     mask_pct = policy.get("mask_ratio_blocked", 0.0) * 100
     fail_pct = policy.get("build_fail_rate", 0.0) * 100
-
     labels = ["Mascaradas", "Build Fail"]
     values = [mask_pct, fail_pct]
     bar_colors = [
@@ -372,7 +389,8 @@ def _draw_counts(ax, world: Dict[str, Any]) -> None:
         ax.plot(b_hist, color=_PALETTE["blue"], linewidth=1.5, label="Buildings")
     unit_count = world.get("unit_count", 0)
     if b_hist:
-        ax.axhline(unit_count, color=_PALETTE["peach"], linewidth=1, linestyle=":", alpha=0.8, label=f"Units={unit_count}")
+        ax.axhline(unit_count, color=_PALETTE["peach"], linewidth=1, linestyle=":", alpha=0.8,
+                   label=f"Units={unit_count}")
         ax.legend(fontsize=7, labelcolor=_PALETTE["text"], facecolor=_PALETTE["bg_fig"])
 
 
@@ -392,11 +410,80 @@ def _draw_resources(ax, world: Dict[str, Any]) -> None:
     }
     keys = list(deltas.keys())
     vals = [deltas[k] for k in keys]
-    colors = [res_colors.get(k, _PALETTE["text"]) for k in keys]
     bar_colors = [_PALETTE["green"] if v >= 0 else _PALETTE["red"] for v in vals]
     ax.bar(keys, vals, color=bar_colors, edgecolor=_PALETTE["bg_fig"], width=0.6)
     ax.axhline(0, color=_PALETTE["grid"], linewidth=0.8)
     ax.tick_params(axis="x", labelsize=8)
+
+
+def _draw_lookahead_heatmap(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Lookahead Scores Heatmap")
+
+    rows = []
+    for m in metrics_history[-50:]:
+        for entry in m.get("critic_heads", []):
+            if len(entry) == 4:
+                rows.append(entry)
+
+    if len(rows) < 2:
+        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
+                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
+        return
+
+    arr = np.array(rows[-50:], dtype=np.float32).T
+    im = ax.imshow(arr, aspect="auto", cmap="RdYlGn", interpolation="nearest")
+    ax.set_yticks(list(range(len(_HEAD_NAMES))))
+    ax.set_yticklabels(_HEAD_NAMES, fontsize=6, color=_PALETTE["text"])
+    ax.set_xlabel("Step", color=_PALETTE["subtext"], fontsize=6)
+
+
+def _draw_placement_scores(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Placement Scores (Slot 0-8)")
+
+    slots = list(range(9))
+    scores = [0.0] * 9
+
+    for m in reversed(metrics_history[-20:]):
+        world = m.get("world", {})
+        resources = world.get("resources", {})
+        if resources:
+            copper = float(resources.get("copper", 0.0))
+            for i in range(9):
+                scores[i] = min(1.0, copper / (500.0 * (i + 1)))
+            break
+
+    colors = [_PALETTE["green"] if s > 0.5 else _PALETTE["yellow"] if s > 0.2 else _PALETTE["red"]
+              for s in scores]
+    ax.bar(slots, scores, color=colors, edgecolor=_PALETTE["bg_fig"], width=0.7)
+    ax.set_ylim(0, 1.1)
+    ax.set_xticks(slots)
+    ax.set_xticklabels([f"S{i}" for i in slots], fontsize=6)
+
+
+def _draw_defense_gap(ax, metrics_history: list) -> None:
+    ax.cla()
+    _style_ax(ax, "Defense Gap / Power Deficit", "Rollout")
+
+    defense_vals = []
+    power_vals = []
+    for m in metrics_history:
+        world = m.get("world", {})
+        power = world.get("power", {})
+        produced = float(power.get("produced", 0.0))
+        consumed = float(power.get("consumed", 0.0))
+        deficit = max(0.0, consumed - produced)
+        power_vals.append(min(1.0, deficit / max(produced, 1.0)))
+
+        enemies_present = 1.0 if len(m.get("world", {}).get("resources", {})) < 2 else 0.0
+        defense_vals.append(enemies_present)
+
+    if power_vals:
+        xs = list(range(len(power_vals)))
+        ax.plot(xs, power_vals, color=_PALETTE["yellow"], linewidth=1.2, label="Power deficit")
+        ax.legend(fontsize=6, labelcolor=_PALETTE["text"], facecolor=_PALETTE["bg_fig"])
+        ax.set_ylim(0, 1.1)
 
 
 def _draw_stats(ax, stats: Dict[str, Any], metrics: Dict[str, Any], window: int) -> None:
@@ -415,237 +502,6 @@ def _draw_stats(ax, stats: Dict[str, Any], metrics: Dict[str, Any], window: int)
     )
     ax.text(0.5, 0.5, txt, transform=ax.transAxes, ha="center", va="center",
             fontsize=9, color=_PALETTE["text"], fontfamily="monospace")
-
-
-def _draw_drill_rate_total(ax, metrics: list) -> None:
-    ax.cla()
-    _style_ax(ax, "Drills Built (Total)", "Episódio")
-    if not metrics:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-    
-    data = []
-    for m in metrics:
-        ep_data = m.get("episode_metrics", {})
-        drills = ep_data.get("drills_built_total", 0)
-        data.append(drills)
-    
-    if data:
-        xs = list(range(len(data)))
-        ax.plot(xs, data, color=_PALETTE["green"], linewidth=1.5, marker="o", markersize=3)
-        ax.fill_between(xs, data, alpha=0.15, color=_PALETTE["green"])
-
-
-def _draw_drill_rate_frequency(ax, metrics: list) -> None:
-    ax.cla()
-    _style_ax(ax, "Drill Build Frequency (%)", "Episódio")
-    if not metrics:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-    
-    data = []
-    for m in metrics:
-        ep_data = m.get("episode_metrics", {})
-        freq = ep_data.get("drill_build_frequency_pct", 0.0)
-        data.append(freq)
-    
-    if data:
-        xs = list(range(len(data)))
-        ax.plot(xs, data, color=_PALETTE["teal"], linewidth=1.5, marker="o", markersize=3)
-        ax.fill_between(xs, data, alpha=0.15, color=_PALETTE["teal"])
-        ax.set_ylim(0, max(100, max(data) * 1.1) if data else 100)
-
-
-def _draw_penalty_counts(ax, metrics: list) -> None:
-    ax.cla()
-    _style_ax(ax, "Penalty Counts (Last 20 Episodes)", "")
-    if not metrics:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-    
-    penalty_a_list = []
-    penalty_b_list = []
-    
-    for m in metrics[-20:]:
-        ep_data = m.get("episode_metrics", {})
-        penalty_a_list.append(ep_data.get("penalty_a_count", 0))
-        penalty_b_list.append(ep_data.get("penalty_b_count", 0))
-    
-    if penalty_a_list:
-        xs = list(range(len(penalty_a_list)))
-        width = 0.35
-        ax.bar([x - width/2 for x in xs], penalty_a_list, width=width, 
-               label="Penalty A", color=_PALETTE["red"], alpha=0.8)
-        ax.bar([x + width/2 for x in xs], penalty_b_list, width=width,
-               label="Penalty B", color=_PALETTE["yellow"], alpha=0.8)
-        ax.legend(fontsize=7, labelcolor=_PALETTE["text"], facecolor=_PALETTE["bg_fig"])
-        ax.set_xticks([])
-
-
-def _draw_penalty_frequency(ax, metrics: list) -> None:
-    ax.cla()
-    _style_ax(ax, "Penalty Frequency (% of Steps)", "Episódio")
-    if not metrics:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-    
-    data = []
-    for m in metrics:
-        ep_data = m.get("episode_metrics", {})
-        freq = ep_data.get("penalty_frequency_pct", 0.0)
-        data.append(freq)
-    
-    if data:
-        xs = list(range(len(data)))
-        color = _PALETTE["red"] if (data[-1] > 20) else _PALETTE["yellow"] if (data[-1] > 10) else _PALETTE["green"]
-        ax.plot(xs, data, color=color, linewidth=1.5, marker="o", markersize=3)
-        ax.fill_between(xs, data, alpha=0.15, color=color)
-        ax.set_ylim(0, max(50, max(data) * 1.1) if data else 50)
-
-
-def _draw_action_dist_per_episode(ax, metrics: list) -> None:
-    ax.cla()
-    _style_ax(ax, "Action Distribution (Latest Episode)")
-    if not metrics:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-
-    latest = metrics[-1].get("episode_metrics", {})
-    action_dist = latest.get("action_dist", {})
-
-    if not action_dist:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-
-    labels = list(action_dist.keys())
-    values = list(action_dist.values())
-    colors = [_PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"],
-              _PALETTE["yellow"], _PALETTE["peach"], _PALETTE["green"], _PALETTE["purple"]]
-
-    nonzero = [(l, v, c) for l, v, c in zip(labels, values, colors * 2) if v > 0]
-    if not nonzero:
-        ax.text(0.5, 0.5, "Sem dados de ação", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-    nz_labels, nz_values, nz_colors = zip(*nonzero)
-
-    wedges, texts, autotexts = ax.pie(
-        nz_values,
-        labels=None,
-        colors=nz_colors,
-        autopct=lambda p: f"{p:.1f}%" if p > 4 else "",
-        startangle=90,
-        wedgeprops={"edgecolor": _PALETTE["bg_fig"], "linewidth": 0.8},
-        textprops={"fontsize": 7, "color": _PALETTE["text"]},
-    )
-    for at in autotexts:
-        at.set_fontsize(6)
-        at.set_color(_PALETTE["bg_fig"])
-
-    ax.legend(
-        wedges, nz_labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, -0.22),
-        ncol=min(4, len(nz_labels)),
-        fontsize=6,
-        frameon=False,
-        labelcolor=_PALETTE["subtext"],
-    )
-
-
-def _draw_action_dist_rolling(ax, metrics: list) -> None:
-    ax.cla()
-    _style_ax(ax, "Action Distribution (Rolling 100ep Avg)")
-    if not metrics or len(metrics) < 2:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-
-    window_metrics = metrics[-100:] if len(metrics) >= 100 else metrics
-    action_counts: dict = {}
-    for m in window_metrics:
-        for action, pct in m.get("episode_metrics", {}).get("action_dist", {}).items():
-            action_counts[action] = action_counts.get(action, 0) + pct
-
-    if not action_counts:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-
-    n = len(window_metrics)
-    labels = list(action_counts.keys())
-    values = [v / n for v in action_counts.values()]
-    colors = [_PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"], _PALETTE["yellow"],
-              _PALETTE["peach"], _PALETTE["green"], _PALETTE["purple"],
-              _PALETTE["blue"], _PALETTE["teal"], _PALETTE["red"], _PALETTE["yellow"],
-              _PALETTE["peach"]]
-
-    nonzero = [(l, v, c) for l, v, c in zip(labels, values, colors) if v > 0]
-    if not nonzero:
-        ax.text(0.5, 0.5, "Sem dados", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-    nz_labels, nz_values, nz_colors = zip(*nonzero)
-
-    wedges, _, autotexts = ax.pie(
-        nz_values,
-        labels=None,
-        colors=nz_colors,
-        autopct=lambda p: f"{p:.1f}%" if p > 4 else "",
-        startangle=90,
-        wedgeprops={"edgecolor": _PALETTE["bg_fig"], "linewidth": 0.8},
-        textprops={"fontsize": 7, "color": _PALETTE["text"]},
-    )
-    for at in autotexts:
-        at.set_fontsize(6)
-        at.set_color(_PALETTE["bg_fig"])
-
-    ax.legend(
-        wedges, nz_labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, -0.22),
-        ncol=min(4, len(nz_labels)),
-        fontsize=6,
-        frameon=False,
-        labelcolor=_PALETTE["subtext"],
-    )
-
-
-def _draw_extended_resources(ax, metrics: list) -> None:
-    ax.cla()
-    _style_ax(ax, "Extended Resources")
-    if not metrics:
-        ax.text(0.5, 0.5, "Aguardando dados…", transform=ax.transAxes,
-                ha="center", va="center", fontsize=8, color=_PALETTE["subtext"])
-        return
-
-    resource_series: dict[str, list[float]] = {
-        "silicon": [], "oil": [], "water": [], "metaglass": []
-    }
-    for m in metrics:
-        world_res = m.get("world", {}).get("resources", {})
-        for rname in resource_series:
-            resource_series[rname].append(float(world_res.get(rname, 0.0)))
-
-    colors = [_PALETTE["teal"], _PALETTE["peach"], _PALETTE["blue"], _PALETTE["purple"]]
-    xs = list(range(len(metrics)))
-    any_data = False
-    for (rname, series), color in zip(resource_series.items(), colors):
-        if any(v > 0 for v in series):
-            ax.plot(xs, series, color=color, linewidth=1.2, label=rname)
-            any_data = True
-
-    if any_data:
-        ax.legend(fontsize=6, frameon=False, labelcolor=_PALETTE["subtext"])
-    else:
-        ax.text(0.5, 0.5, "Sem silicon/oil/water/metaglass", transform=ax.transAxes,
-                ha="center", va="center", fontsize=7, color=_PALETTE["subtext"])
 
 
 def parse_args() -> argparse.Namespace:
