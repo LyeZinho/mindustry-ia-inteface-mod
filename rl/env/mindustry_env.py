@@ -35,8 +35,10 @@ from rl.env.spaces import (
     compute_action_mask, NUM_ACTION_TYPES, NUM_SLOTS,
     ACTION_REGISTRY, ACTION_WAIT, ACTION_MOVE, ACTION_REPAIR,
     BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER, BLOCK_DRILL,
+    SLOT_DX, SLOT_DY, GRID_SIZE,
 )
 from rl.rewards.multi_objective import compute_reward, _detect_new_drills
+from rl.optimization.worker import OptimizationWorker
 
 
 DEFAULT_TRAINING_MAPS = [
@@ -78,6 +80,9 @@ class MindustryEnv(gym.Env):
         self._action_history: list[int] = []
         self._global_timestep: int = 0
 
+        self._opt_worker = OptimizationWorker(update_every=5)
+        self._opt_worker.start()
+
     def reset(
         self,
         seed: Optional[int] = None,
@@ -105,7 +110,9 @@ class MindustryEnv(gym.Env):
                 self._prev_state = state
                 self._step_count = 0
                 self._action_history = []
-                return parse_observation(state), {}
+                opt_signals = self._opt_worker.get_result()
+                threat_map, power_map, build_map = self._compute_spatial_maps(state, opt_signals)
+                return parse_observation(state, opt_signals=opt_signals, threat_map=threat_map, power_map=power_map, build_map=build_map), {}
 
             except OSError as exc:
                 last_exc = exc
@@ -146,6 +153,11 @@ class MindustryEnv(gym.Env):
             self._client = None
             empty_obs = parse_observation(self._prev_state or {})
             return empty_obs, -1.0, True, False, {"connection_error": str(exc)}
+        except Exception as exc:
+            _log.error("Unexpected error during step (%s); ending episode.", exc)
+            self._client = None
+            empty_obs = parse_observation(self._prev_state or {})
+            return empty_obs, -1.0, True, False, {"connection_error": str(exc)}
 
         step_latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -156,8 +168,12 @@ class MindustryEnv(gym.Env):
             return empty_obs, -1.0, True, False, {"connection_error": "EOF"}
 
         self._step_count += 1
+        self._global_timestep += 1
 
-        obs = parse_observation(state)
+        self._opt_worker.update(state)
+        opt_signals = self._opt_worker.get_result()
+        threat_map, power_map, build_map = self._compute_spatial_maps(state, opt_signals)
+        obs = parse_observation(state, opt_signals=opt_signals, threat_map=threat_map, power_map=power_map, build_map=build_map)
         core_hp = float(state.get("core", {}).get("hp", 0.0))
         player_alive = bool(state.get("player", {}).get("alive", False))
         terminated = core_hp <= 0.0 or not player_alive
@@ -175,6 +191,7 @@ class MindustryEnv(gym.Env):
             done=terminated,
             action_taken=action_type,
             action_history=self._action_history,
+            timestep=self._global_timestep,
         )
 
         penalty_a_triggered, penalty_b_triggered = self._compute_penalties(
@@ -203,6 +220,7 @@ class MindustryEnv(gym.Env):
         if self._client is not None:
             self._client.close()
             self._client = None
+        self._opt_worker.stop()
 
     def action_masks(self) -> np.ndarray:
         """Return action mask for MaskablePPO. Shape: (21,) = 12 action_types + 9 slots."""
@@ -219,6 +237,48 @@ class MindustryEnv(gym.Env):
                     resource_mask[i] = False
 
         return resource_mask
+
+    def _compute_spatial_maps(
+        self, state: Dict[str, Any], opt_signals: Dict[str, Any]
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        threat_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+        power_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+        build_map = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.float32)
+
+        for enemy in state.get("enemies", []):
+            ex = int(enemy.get("x", 0))
+            ey = int(enemy.get("y", 0))
+            ehp = float(enemy.get("hp", 0.0))
+            for y in range(GRID_SIZE):
+                for x in range(GRID_SIZE):
+                    dist = max(1.0, ((x - ex) ** 2 + (y - ey) ** 2) ** 0.5)
+                    threat_map[y, x] = min(1.0, threat_map[y, x] + ehp / dist)
+
+        power_nodes = state.get("powerNodes", [])
+        for node in power_nodes:
+            nx = int(node.get("x", 0))
+            ny = int(node.get("y", 0))
+            nr = int(node.get("range", 10))
+            for y in range(max(0, ny - nr), min(GRID_SIZE, ny + nr + 1)):
+                for x in range(max(0, nx - nr), min(GRID_SIZE, nx + nr + 1)):
+                    if ((x - nx) ** 2 + (y - ny) ** 2) <= nr * nr:
+                        power_map[y, x] = 1.0
+
+        for tile in state.get("oreGrid", []):
+            ox = int(tile.get("x", 0))
+            oy = int(tile.get("y", 0))
+            if 0 <= ox < GRID_SIZE and 0 <= oy < GRID_SIZE:
+                build_map[oy, ox] = min(1.0, build_map[oy, ox] + 0.8)
+
+        core = state.get("core", {})
+        cx = int(core.get("x", GRID_SIZE // 2))
+        cy = int(core.get("y", GRID_SIZE // 2))
+        for y in range(GRID_SIZE):
+            for x in range(GRID_SIZE):
+                dist = max(1.0, ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5)
+                build_map[y, x] = min(1.0, build_map[y, x] + 0.2 / dist)
+
+        return threat_map, power_map, build_map
 
     def _compute_penalties(
         self, prev_state: Dict[str, Any], curr_state: Dict[str, Any]
@@ -247,6 +307,46 @@ class MindustryEnv(gym.Env):
         if 0 <= action_type < len(ACTION_REGISTRY):
             block = ACTION_REGISTRY[action_type].block
             if block is not None:
+                # Validate target tile is free before sending BUILD command
+                if not self._is_build_target_free(arg):
+                    _log.debug(
+                        "Skipping BUILD %s at slot %d: target tile occupied",
+                        block, arg
+                    )
+                    return
                 self._client.send_command(f"PLAYER_BUILD;{block};{arg}")
                 return
         raise ValueError(f"Invalid action_type: {action_type}")
+    
+    def _is_build_target_free(self, slot: int) -> bool:
+        """Check if target tile for build slot is free (block == 'air' and no building)."""
+        if self._prev_state is None:
+            return True
+        
+        player = self._prev_state.get("player", {})
+        if not player.get("alive", False):
+            return False
+        
+        player_x = int(player.get("x", 0))
+        player_y = int(player.get("y", 0))
+        target_x = player_x + SLOT_DX[slot % NUM_SLOTS]
+        target_y = player_y + SLOT_DY[slot % NUM_SLOTS]
+        
+        # Check if target tile has a block (not air)
+        grid = self._prev_state.get("grid", [])
+        for tile in grid:
+            if int(tile.get("x", 0)) == target_x and int(tile.get("y", 0)) == target_y:
+                block = tile.get("block", "air")
+                if block != "air":
+                    return False
+        
+        # Check if any building occupies the target position
+        buildings = self._prev_state.get("buildings", [])
+        for building in buildings:
+            bx = int(building.get("x", 0))
+            by = int(building.get("y", 0))
+            if bx == target_x and by == target_y:
+                return False
+        
+        # Tile not in grid and no building = free to build
+        return True
