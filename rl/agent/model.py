@@ -34,10 +34,9 @@ class PolicyValueNet(nn.Module):
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
         self.relu = nn.ReLU()
 
-        # Compute CNN output dimension via dummy pass
+        # Compute CNN output dimension via dummy pass (grid is 31x31)
         with torch.no_grad():
-            # Assume grid is 84x84 (standard Atari size, adaptable)
-            dummy_grid = torch.zeros(1, grid_channels, 84, 84)
+            dummy_grid = torch.zeros(1, grid_channels, 31, 31)
             dummy_out = self.relu(self.conv1(dummy_grid))
             dummy_out = self.relu(self.conv2(dummy_out))
             cnn_output_dim = dummy_out.view(1, -1).shape[1]
