@@ -386,3 +386,28 @@ def test_env_has_global_timestep_attribute():
     env = MindustryEnv(client=make_mock_client())
     assert hasattr(env, "_global_timestep")
     assert env._global_timestep == 0
+
+
+def test_execute_delete_sends_correct_command(monkeypatch):
+    from rl.env.mindustry_env import MindustryEnv
+    from rl.env.spaces import SLOT_DX, SLOT_DY
+
+    env = MindustryEnv.__new__(MindustryEnv)
+    env._prev_state = {
+        "player": {"x": 10, "y": 10, "alive": True},
+        "buildings": [],
+        "grid": [], "blockedTiles": [],
+    }
+
+    commands = []
+
+    class FakeClient:
+        def send_command(self, cmd): commands.append(cmd)
+
+    env._client = FakeClient()
+
+    slot = 4
+    env._execute_action(12, slot)
+    expected_x = 10 + SLOT_DX[slot]
+    expected_y = 10 + SLOT_DY[slot]
+    assert commands == [f"DELETE;{expected_x};{expected_y}"]

@@ -2,7 +2,7 @@
 MindustryEnv — Gymnasium environment wrapping the Mimi Gateway TCP mod.
 
 Observation: Dict{"grid": (4,31,31), "features": (83,)}
-Action:      MultiDiscrete([12, 9]) — [action_type, arg]
+Action:      MultiDiscrete([13, 9]) — [action_type, arg]
 
 action_type:
   0  = WAIT
@@ -17,6 +17,7 @@ action_type:
   9  = BUILD_SILICON_SMELTER (arg = slot 0-8)
   10 = BUILD_COMBUSTION_GEN (arg = slot 0-8)
   11 = BUILD_PNEUMATIC_DRILL (arg = slot 0-8)
+  12 = DELETE            (arg = slot 0-8)
 """
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ from rl.env.mimi_client import MimiClient
 from rl.env.spaces import (
     make_obs_space, make_action_space, parse_observation,
     compute_action_mask, NUM_ACTION_TYPES, NUM_SLOTS,
-    ACTION_REGISTRY, ACTION_WAIT, ACTION_MOVE, ACTION_REPAIR,
+    ACTION_REGISTRY, ACTION_WAIT, ACTION_MOVE, ACTION_REPAIR, ACTION_DELETE,
     BLOCK_TURRET, BLOCK_WALL, BLOCK_POWER, BLOCK_DRILL,
     SLOT_DX, SLOT_DY, GRID_SIZE,
 )
@@ -311,6 +312,15 @@ class MindustryEnv(gym.Env):
             return
         if action_type == ACTION_REPAIR:
             self._client.send_command(f"REPAIR_SLOT;{arg}")
+            return
+        if action_type == ACTION_DELETE:
+            if self._prev_state is not None:
+                player = self._prev_state.get("player", {})
+                player_x = int(player.get("x", 0))
+                player_y = int(player.get("y", 0))
+                target_x = player_x + SLOT_DX[arg % NUM_SLOTS]
+                target_y = player_y + SLOT_DY[arg % NUM_SLOTS]
+                self._client.send_command(f"DELETE;{target_x};{target_y}")
             return
         if 0 <= action_type < len(ACTION_REGISTRY):
             block = ACTION_REGISTRY[action_type].block
