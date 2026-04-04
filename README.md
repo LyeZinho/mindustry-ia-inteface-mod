@@ -306,6 +306,32 @@ Checkpoints are saved every 10 000 steps as `rl/models/mindustry_ppo_<N>_steps.z
 | `--logs-dir` | `rl/logs` | TensorBoard logs and live metrics |
 | `--no-server` | false | Skip spawning server (connect to existing) |
 
+### Available maps
+
+These are the maps included in the default training rotation (Archipelago excluded — starts with pre-built mining):
+
+| Map | Notes |
+|-----|-------|
+| Ancient Caldera | |
+| Debris Field | |
+| Domain | |
+| Fork | |
+| Fortress | |
+| Glacier | |
+| Islands | |
+| Labyrinth | |
+| Maze | |
+| Molten Lake | |
+| Mud Flats | |
+| Passage | |
+| Shattered | |
+| Tendrils | |
+| Triad | |
+| Veins | |
+| Wasteland | |
+
+Pass any subset via `--maps "Map One,Map Two"` (names are case-sensitive).
+
 ### Recommended curriculum workflow
 
 1. Train on one simple map until the agent learns basic mining:
