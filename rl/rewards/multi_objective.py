@@ -196,7 +196,7 @@ def _detect_new_drills(prev_state: Dict[str, Any], curr_state: Dict[str, Any]) -
 def _detect_action_repetition_penalty(
     action_history: Optional[list[int]],
     new_buildings: int = 0,
-    min_history_len: int = 3,
+    min_history_len: int = 7,
 ) -> float:
     """
     Penalize excessive repetition of passive actions (WAIT, MOVE) without agent progress.
@@ -213,7 +213,7 @@ def _detect_action_repetition_penalty(
                         Should include the CURRENT action (updated before calling).
         new_buildings: Number of new buildings placed THIS step (default: 0).
                        If > 0, the agent made progress and penalty is waived.
-        min_history_len: Minimum consecutive passive actions to trigger (default: 3).
+        min_history_len: Minimum consecutive passive actions to trigger (default: 7).
 
     Returns:
         -0.05 if idle streak detected with no building progress, else 0.0

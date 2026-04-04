@@ -168,19 +168,19 @@ def test_no_penalty_if_actions_diverse():
 
 
 def test_penalty_if_repeated_wait_no_progress():
-    """Repeated WAIT with no buildings placed = -0.05."""
+    """Repeated WAIT with no buildings placed = -0.05 (threshold=7 consecutive actions)."""
     from rl.rewards.multi_objective import _detect_action_repetition_penalty
 
-    history = [0, 0, 0, 0, 0]  # All WAIT, no buildings placed
+    history = [0, 0, 0, 0, 0, 0, 0]  # 7 consecutive WAITs — meets threshold
     penalty = _detect_action_repetition_penalty(history, new_buildings=0)
     assert penalty == -0.05
 
 
 def test_penalty_if_repeated_move_no_progress():
-    """Repeated MOVE with no buildings placed = -0.05."""
+    """Repeated MOVE with no buildings placed = -0.05 (threshold=7 consecutive actions)."""
     from rl.rewards.multi_objective import _detect_action_repetition_penalty
 
-    history = [1, 1, 1]  # All MOVE (3 is minimum), no buildings placed
+    history = [1, 1, 1, 1, 1, 1, 1]  # 7 consecutive MOVEs — meets threshold
     penalty = _detect_action_repetition_penalty(history, new_buildings=0)
     assert penalty == -0.05
 
@@ -193,7 +193,7 @@ def test_penalty_fires_despite_passive_income():
     """
     from rl.rewards.multi_objective import _detect_action_repetition_penalty
 
-    history = [1, 1, 1]  # MOVE MOVE MOVE — 3 passive actions
+    history = [1, 1, 1, 1, 1, 1, 1]  # 7 MOVEs — meets threshold
     # new_buildings=0 (default): idle even with passive income from drills
     penalty = _detect_action_repetition_penalty(history, new_buildings=0)
     assert penalty == -0.05
@@ -223,6 +223,30 @@ def test_no_penalty_if_history_is_none():
 
     penalty = _detect_action_repetition_penalty(None, new_buildings=0)
     assert penalty == 0.0
+
+
+def test_no_penalty_for_short_navigation_sequence():
+    """3–6 consecutive MOVE actions should NOT trigger penalty (navigation is valid).
+
+    With min_history_len raised to 7, short navigation sequences are forgiven.
+    """
+    from rl.rewards.multi_objective import _detect_action_repetition_penalty
+
+    history = [1, 1, 1, 1, 1, 1]  # 6 MOVEs — below new threshold of 7
+    penalty = _detect_action_repetition_penalty(history, new_buildings=0)
+    assert penalty == 0.0
+
+
+def test_penalty_still_fires_for_long_idle_streak():
+    """7+ consecutive WAIT/MOVE actions should still trigger penalty.
+
+    Ensures we didn't completely disable idle detection.
+    """
+    from rl.rewards.multi_objective import _detect_action_repetition_penalty
+
+    history = [1, 1, 1, 1, 1, 1, 1]  # 7 MOVEs — meets new threshold
+    penalty = _detect_action_repetition_penalty(history, new_buildings=0)
+    assert penalty == -0.05
 
 
 def test_no_penalty_if_built_and_gained_resources():
