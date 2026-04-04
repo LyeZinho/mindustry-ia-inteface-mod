@@ -526,3 +526,31 @@ def test_resource_bleeding_penalty_threshold_is_50():
     assert _detect_resource_bleeding_penalty(prev, curr_small) == 0.0
     curr_big = {"buildings": [{"x": 1, "y": 1, "block": "duo", "team": "sharded"}], "resources": {"copper": 100}}
     assert _detect_resource_bleeding_penalty(prev, curr_big) == -0.10
+
+
+def test_curriculum_phase0_includes_delete():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import ACTION_DELETE
+    mask = apply_curriculum_action_mask(timestep=10_000)
+    assert mask[ACTION_DELETE] is True
+
+
+def test_curriculum_phase1_includes_delete():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import ACTION_DELETE
+    mask = apply_curriculum_action_mask(timestep=150_000)
+    assert mask[ACTION_DELETE] is True
+
+
+def test_curriculum_phase2_includes_delete():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import ACTION_DELETE
+    mask = apply_curriculum_action_mask(timestep=400_000)
+    assert mask[ACTION_DELETE] is True
+
+
+def test_curriculum_full_phase_has_13_actions():
+    from rl.rewards.multi_objective import apply_curriculum_action_mask
+    from rl.env.spaces import NUM_ACTION_TYPES
+    mask = apply_curriculum_action_mask(timestep=700_000)
+    assert sum(mask) == NUM_ACTION_TYPES

@@ -38,11 +38,11 @@ Terminal Penalties:
 CURRICULUM LEARNING (ENABLED)
 ================================================================================
 
-4-phase curriculum for 12 actions:
-  Phase 0 (0-50k steps):     WAIT, MOVE, BUILD_DRILL (mining focus)
-  Phase 1 (50k-150k steps):  Add BUILD_CONVEYOR (connect drill output)
-  Phase 2 (150k-300k steps): Add defense + power + processing
-  Phase 3 (300k+ steps):     All 12 actions
+4-phase curriculum for 13 actions:
+  Phase 0 (0-100k steps):    WAIT, MOVE, BUILD_DRILL, DELETE
+  Phase 1 (100k-300k steps): Add BUILD_CONVEYOR, DELETE
+  Phase 2 (300k-600k steps): Add defense + power + processing + DELETE
+  Phase 3 (600k+ steps):     All 13 actions
 
 ================================================================================
 KEY DESIGN DECISIONS
@@ -94,18 +94,19 @@ ACTION_BUILD_GRAPHITE_PRESS = _action_idx("BUILD_GRAPHITE_PRESS")
 ACTION_BUILD_SILICON_SMELTER = _action_idx("BUILD_SILICON_SMELTER")
 ACTION_BUILD_COMBUSTION_GEN = _action_idx("BUILD_COMBUSTION_GEN")
 ACTION_BUILD_PNEUMATIC_DRILL = _action_idx("BUILD_PNEUMATIC_DRILL")
+ACTION_DELETE = _action_idx("DELETE")
 
 CURRICULUM_PHASES = [
     ("mining_only", (0, 100_000), [
-        ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL,
+        ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_DELETE,
     ]),
     ("drill_connect", (100_000, 300_000), [
-        ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR,
+        ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR, ACTION_DELETE,
     ]),
     ("defense_power", (300_000, 600_000), [
         ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR,
         ACTION_BUILD_POWER, ACTION_BUILD_WALL, ACTION_BUILD_TURRET,
-        ACTION_REPAIR, ACTION_BUILD_GRAPHITE_PRESS, ACTION_BUILD_COMBUSTION_GEN,
+        ACTION_REPAIR, ACTION_BUILD_GRAPHITE_PRESS, ACTION_BUILD_COMBUSTION_GEN, ACTION_DELETE,
     ]),
     ("full", (600_000, float('inf')), list(range(13))),
 ]
