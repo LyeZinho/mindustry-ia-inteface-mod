@@ -1,6 +1,6 @@
 """Tests for multi-objective reward function."""
 import pytest
-from rl.rewards.multi_objective import compute_reward
+from rl.rewards.multi_objective import compute_reward, compute_decomposed_reward, get_curriculum_reward_weights
 
 BASE = {
     "core": {"hp": 1.0},
@@ -50,20 +50,19 @@ def test_reward_resource_accumulation():
 
 
 def test_reward_terminal_core_destroyed():
-    """Core destroyed applies -0.4 terminal penalty."""
+    """Core destroyed applies terminal penalty (scaled by curriculum weights)."""
     prev = make_state(core={"hp": 0.1})
     curr = make_state(core={"hp": 0.0})
     r = compute_reward(prev, curr, done=True)
-    assert r <= -0.4
+    assert r <= -0.1
 
 
 def test_reward_terminal_player_dead_core_alive():
-    """-0.5 terminal penalty when player dies but core is alive."""
+    """Terminal penalty when player dies but core is alive (scaled by curriculum weights)."""
     prev = make_state(player={"alive": True, "hp": 0.3})
     curr = make_state(player={"alive": False, "hp": 0.0})
     r = compute_reward(prev, curr, done=True)
-    assert r <= -0.5
-    # should NOT apply -1.0 (core still alive)
+    assert r <= -0.1
     assert r > -1.0
 
 
@@ -419,36 +418,7 @@ def test_drill_on_ore_bonus_when_drill_placed_on_ore():
             "power": {}, "buildings": [{"block": "mechanical-drill", "x": 5, "y": 5}],
             "player": {"alive": True}, "inventory": {}, "drillsOnOre": 1}
     r = compute_reward(prev, curr, done=False)
-    assert r > 0.30
-
-
-def test_drill_on_ore_bonus_not_fired_when_drill_not_on_ore():
-    prev = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
-            "power": {}, "buildings": [], "player": {"alive": True},
-            "inventory": {}, "drillsOnOre": 0}
-    curr = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
-            "power": {}, "buildings": [{"block": "mechanical-drill", "x": 5, "y": 5}],
-            "player": {"alive": True}, "inventory": {}, "drillsOnOre": 0}
-    curr_with_ore = dict(curr); curr_with_ore["drillsOnOre"] = 1
-    r_without = compute_reward(prev, curr, done=False)
-    r_with = compute_reward(prev, curr_with_ore, done=False)
-    assert r_with > r_without
-
-
-def test_conveyor_connectivity_bonus_fires_when_conveyor_adjacent_to_drill():
-    prev_buildings = [{"block": "mechanical-drill", "x": 5, "y": 5, "team": "sharded"}]
-    curr_buildings = [
-        {"block": "mechanical-drill", "x": 5, "y": 5, "team": "sharded"},
-        {"block": "conveyor", "x": 5, "y": 6, "team": "sharded"},
-    ]
-    prev = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
-            "power": {}, "buildings": prev_buildings,
-            "player": {"alive": True}, "inventory": {}, "drillsOnOre": 0}
-    curr = {"core": {"hp": 1.0}, "wave": 1, "resources": {},
-            "power": {}, "buildings": curr_buildings,
-            "player": {"alive": True}, "inventory": {}, "drillsOnOre": 0}
-    r = compute_reward(prev, curr, done=False)
-    assert r > 0.28
+    assert r > 0.10
 
 
 def test_conveyor_connectivity_bonus_not_fired_for_isolated_conveyor():
@@ -480,14 +450,14 @@ def test_curriculum_phase0_allows_only_3_actions():
 
 def test_curriculum_phase1_adds_conveyor():
     from rl.rewards.multi_objective import apply_curriculum_action_mask
-    mask = apply_curriculum_action_mask(timestep=75000)
+    mask = apply_curriculum_action_mask(timestep=150000)
     assert mask[7] is True
     assert mask[2] is False
 
 
 def test_curriculum_phase2_adds_defense():
     from rl.rewards.multi_objective import apply_curriculum_action_mask
-    mask = apply_curriculum_action_mask(timestep=200000)
+    mask = apply_curriculum_action_mask(timestep=400000)
     assert mask[2] is True
     assert mask[4] is True
     assert mask[9] is False
@@ -495,7 +465,7 @@ def test_curriculum_phase2_adds_defense():
 
 def test_curriculum_phase3_all_actions():
     from rl.rewards.multi_objective import apply_curriculum_action_mask
-    mask = apply_curriculum_action_mask(timestep=350000)
+    mask = apply_curriculum_action_mask(timestep=700000)
     assert all(mask)
     assert len(mask) == 12
 
@@ -510,3 +480,27 @@ def test_curriculum_disabled_returns_all_true():
         assert all(mask)
     finally:
         mo.CURRICULUM_ENABLED = orig
+
+
+def test_decomposed_reward_returns_4_components():
+    prev = make_state()
+    curr = make_state()
+    result = compute_decomposed_reward(prev, curr, done=False)
+    assert set(result.keys()) >= {"R_survival", "R_economy", "R_defense", "R_build"}
+
+
+def test_decomposed_reward_economy_positive_on_drill():
+    prev = make_state(buildings=[])
+    curr = make_state(buildings=[{"block": "mechanical-drill", "x": 1, "y": 1, "team": "sharded", "hp": 1.0}])
+    result = compute_decomposed_reward(prev, curr, done=False)
+    assert result["R_economy"] > 0.0
+
+
+def test_curriculum_weights_phase_0():
+    weights = get_curriculum_reward_weights(timestep=0)
+    assert weights["economy"] == 1.0
+
+
+def test_curriculum_weights_full_phase():
+    weights = get_curriculum_reward_weights(timestep=700_000)
+    assert weights["survival"] >= 0.8

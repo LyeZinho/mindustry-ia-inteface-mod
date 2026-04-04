@@ -96,19 +96,47 @@ ACTION_BUILD_COMBUSTION_GEN = _action_idx("BUILD_COMBUSTION_GEN")
 ACTION_BUILD_PNEUMATIC_DRILL = _action_idx("BUILD_PNEUMATIC_DRILL")
 
 CURRICULUM_PHASES = [
-    ("mining_only", (0, 50_000), [
+    ("mining_only", (0, 100_000), [
         ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL,
     ]),
-    ("drill_connect", (50_000, 150_000), [
+    ("drill_connect", (100_000, 300_000), [
         ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR,
     ]),
-    ("defense_power", (150_000, 300_000), [
+    ("defense_power", (300_000, 600_000), [
         ACTION_WAIT, ACTION_MOVE, ACTION_BUILD_DRILL, ACTION_BUILD_CONVEYOR,
         ACTION_BUILD_POWER, ACTION_BUILD_WALL, ACTION_BUILD_TURRET,
         ACTION_REPAIR, ACTION_BUILD_GRAPHITE_PRESS, ACTION_BUILD_COMBUSTION_GEN,
     ]),
-    ("full", (300_000, float('inf')), list(range(12))),
+    ("full", (600_000, float('inf')), list(range(12))),
 ]
+
+# ============================================================================
+# Curriculum Reward Weights — aligned with CURRICULUM_PHASES thresholds
+# ============================================================================
+# Each phase specifies how much weight to put on each decomposed reward head.
+# Curriculum starts economy-heavy (mine!) and gradually adds survival/defense.
+
+_REWARD_WEIGHT_PHASES = [
+    ("mining_only",   (0,         100_000),         {"survival": 0.3, "economy": 1.0, "defense": 0.1, "build": 0.2}),
+    ("drill_connect", (100_000,   300_000),          {"survival": 0.5, "economy": 0.8, "defense": 0.3, "build": 0.4}),
+    ("defense_power", (300_000,   600_000),          {"survival": 0.8, "economy": 0.6, "defense": 0.8, "build": 0.5}),
+    ("full",          (600_000,   float("inf")),     {"survival": 0.8, "economy": 0.8, "defense": 0.8, "build": 0.6}),
+]
+
+
+def get_curriculum_reward_weights(timestep: int) -> Dict[str, float]:
+    """Return per-head reward weights for the current curriculum phase.
+
+    Args:
+        timestep: Global training timestep.
+
+    Returns:
+        Dict with keys "survival", "economy", "defense", "build".
+    """
+    for _name, (start, end), weights in _REWARD_WEIGHT_PHASES:
+        if start <= timestep < end:
+            return weights
+    return _REWARD_WEIGHT_PHASES[-1][2]
 
 # ------------------------------------------------------------------ #
 # STATE STRUCTURE & ASSUMPTIONS FOR UPCOMING REWARD FEATURES          #
@@ -309,33 +337,32 @@ def _compute_conveyor_connectivity_bonus(
     return 0.0
 
 
-def compute_reward(
+def compute_decomposed_reward(
     prev_state: Dict[str, Any],
     curr_state: Dict[str, Any],
     done: bool,
     action_taken: Optional[int] = None,
     action_history: Optional[list[int]] = None,
-) -> float:
-    """
-    Compute multi-objective reward.
-
-    Args:
-        prev_state: Game state at t-1
-        curr_state: Game state at t
-        done: Episode terminal flag
-        action_taken: Current action type (0-6, see spaces.py ACTION enum)
-        action_history: List of last N actions (default: None, skip inactivity checks)
+) -> Dict[str, float]:
+    """Compute the 4 decomposed reward components.
 
     Returns:
-        Scalar reward for this transition
+        Dict with keys R_survival, R_economy, R_defense, R_build.
     """
     prev_hp = float(prev_state.get("core", {}).get("hp", 0.0))
     curr_hp = float(curr_state.get("core", {}).get("hp", 0.0))
     core_hp_delta = curr_hp - prev_hp
 
-    prev_wave = int(prev_state.get("wave", 0))
-    curr_wave = int(curr_state.get("wave", 0))
-    wave_survived_bonus = 1.0 if curr_wave > prev_wave else 0.0
+    player_alive = bool(curr_state.get("player", {}).get("alive", False))
+    core_destroyed = curr_hp <= 0.0
+    player_alive_bonus = 1.0 if (player_alive and not core_destroyed) else 0.0
+
+    R_survival = 0.30 * core_hp_delta + 0.20 * player_alive_bonus
+    if done:
+        if curr_hp <= 0.0:
+            R_survival -= 0.4
+        elif not player_alive:
+            R_survival -= 0.5
 
     def _total_resources(state: Dict[str, Any]) -> float:
         return sum(float(v) for v in state.get("resources", {}).values())
@@ -352,6 +379,37 @@ def compute_reward(
 
     new_drills = _detect_new_drills(prev_state, curr_state)
     drill_construction_bonus = min(1.0, new_drills * 0.15)
+    drill_on_ore_bonus = _compute_drill_on_ore_bonus(prev_state, curr_state)
+    conveyor_connectivity_bonus = _compute_conveyor_connectivity_bonus(prev_state, curr_state)
+    delivery_bonus = min(1.0, max(0.0, resources_delta / 50.0))
+
+    def _total_inventory(state: Dict[str, Any]) -> float:
+        return sum(float(v) for v in state.get("inventory", {}).values() if v is not None)
+
+    inventory_delta = _total_inventory(curr_state) - _total_inventory(prev_state)
+    manual_mining_reward = max(0.0, inventory_delta * 0.1)
+
+    inactivity_penalty_a = _detect_action_repetition_penalty(
+        action_history=action_history,
+        new_buildings=max(0, len(curr_state.get("buildings", [])) - len(prev_state.get("buildings", []))),
+    )
+    inactivity_penalty_b = _detect_resource_bleeding_penalty(prev_state, curr_state)
+
+    R_economy = (
+        0.10 * (resources_delta / 500.0)
+        + 0.05 * drill_bonus
+        + 0.15 * drill_construction_bonus
+        + 0.10 * drill_on_ore_bonus
+        + 0.10 * conveyor_connectivity_bonus
+        + 0.20 * delivery_bonus
+        + 0.05 * manual_mining_reward
+        + inactivity_penalty_a
+        + inactivity_penalty_b
+    )
+
+    prev_wave = int(prev_state.get("wave", 0))
+    curr_wave = int(curr_state.get("wave", 0))
+    wave_survived_bonus = 1.0 if curr_wave > prev_wave else 0.0
 
     power = curr_state.get("power", {})
     produced = float(power.get("produced", 0.0))
@@ -361,56 +419,45 @@ def compute_reward(
     else:
         power_balance_bonus = 0.0
 
+    R_defense = 0.20 * wave_survived_bonus + 0.07 * power_balance_bonus
+
     prev_buildings = len(prev_state.get("buildings", []))
     curr_buildings = len(curr_state.get("buildings", []))
     new_buildings = max(0, curr_buildings - prev_buildings)
     build_efficiency_bonus = min(1.0, new_buildings * 0.1)
 
-    player_alive = bool(curr_state.get("player", {}).get("alive", False))
-    core_destroyed = curr_hp <= 0.0
-    player_alive_bonus = 1.0 if (player_alive and not core_destroyed) else 0.0
+    R_build = 0.05 * build_efficiency_bonus
 
-    def _total_inventory(state: Dict[str, Any]) -> float:
-        return sum(float(v) for v in state.get("inventory", {}).values() if v is not None)
+    return {
+        "R_survival": R_survival,
+        "R_economy": R_economy,
+        "R_defense": R_defense,
+        "R_build": R_build,
+    }
 
-    inventory_delta = _total_inventory(curr_state) - _total_inventory(prev_state)
-    manual_mining_reward = max(0.0, inventory_delta * 0.1)
 
-    delivery_bonus = min(1.0, max(0.0, resources_delta / 50.0))
-
-    drill_on_ore_bonus = _compute_drill_on_ore_bonus(prev_state, curr_state)
-    conveyor_connectivity_bonus = _compute_conveyor_connectivity_bonus(prev_state, curr_state)
-
-    inactivity_penalty_a = _detect_action_repetition_penalty(
+def compute_reward(
+    prev_state: Dict[str, Any],
+    curr_state: Dict[str, Any],
+    done: bool,
+    action_taken: Optional[int] = None,
+    action_history: Optional[list[int]] = None,
+    timestep: int = 0,
+) -> float:
+    components = compute_decomposed_reward(
+        prev_state, curr_state, done,
+        action_taken=action_taken,
         action_history=action_history,
-        new_buildings=new_buildings,
     )
-
-    inactivity_penalty_b = _detect_resource_bleeding_penalty(prev_state, curr_state)
+    weights = get_curriculum_reward_weights(timestep)
 
     reward = (
-        0.30 * core_hp_delta
-        + 0.20 * wave_survived_bonus
-        + 0.10 * (resources_delta / 500.0)
-        + 0.05 * drill_bonus
-        + 0.15 * drill_construction_bonus
-        + 0.07 * power_balance_bonus
-        + 0.05 * build_efficiency_bonus
-        + 0.20 * player_alive_bonus
-        + 0.05 * manual_mining_reward
-        + 0.20 * delivery_bonus
-        + 0.10 * drill_on_ore_bonus
-        + 0.10 * conveyor_connectivity_bonus
+        weights["survival"] * components["R_survival"]
+        + weights["economy"] * components["R_economy"]
+        + weights["defense"] * components["R_defense"]
+        + weights["build"] * components["R_build"]
         - 0.002
-        + inactivity_penalty_a
-        + inactivity_penalty_b
     )
-
-    if done:
-        if curr_hp <= 0.0:
-            reward -= 0.4
-        elif not player_alive:
-            reward -= 0.5
 
     if bool(curr_state.get("actionFailed", False)):
         reward -= 0.15
