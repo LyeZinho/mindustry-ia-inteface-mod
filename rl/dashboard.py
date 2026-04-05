@@ -299,7 +299,9 @@ def run_cmd(host, port):
 
 
 if __name__ == "__main__":
-    import sys
-    host = sys.argv[1] if len(sys.argv) > 1 else "localhost"
-    port = int(sys.argv[2]) if len(sys.argv) > 2 else 5000
-    run(host=host, port=port, debug=False)
+    import argparse
+    parser = argparse.ArgumentParser(description="Run Mindustry A2C training dashboard")
+    parser.add_argument('--host', default='localhost', help='Dashboard host')
+    parser.add_argument('--port', type=int, default=5000, help='Dashboard port')
+    args = parser.parse_args()
+    run(host=args.host, port=args.port, debug=False)
