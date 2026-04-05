@@ -13,6 +13,7 @@ from datetime import datetime
 from collections import defaultdict
 
 import flask
+import click
 from flask import Flask, render_template_string, jsonify
 import numpy as np
 
@@ -289,5 +290,16 @@ def run(host: str = "localhost", port: int = 5000, debug: bool = False) -> None:
     app.run(host=host, port=port, debug=debug, use_reloader=False)
 
 
+@app.cli.command()
+@click.option('--host', default='localhost')
+@click.option('--port', type=int, default=5000)
+def run_cmd(host, port):
+    """Run the dashboard server."""
+    run(host=host, port=port)
+
+
 if __name__ == "__main__":
-    run()
+    import sys
+    host = sys.argv[1] if len(sys.argv) > 1 else "localhost"
+    port = int(sys.argv[2]) if len(sys.argv) > 2 else 5000
+    run(host=host, port=port, debug=False)
