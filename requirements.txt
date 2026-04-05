@@ -1,0 +1,7 @@
+torch>=2.0.0
+numpy>=1.24.0
+opencv-python>=4.7.0
+pyautogui>=0.9.53
+pillow>=9.5.0
+pyyaml>=6.0
+pytest>=7.0.0
