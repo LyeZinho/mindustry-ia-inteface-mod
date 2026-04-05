@@ -137,13 +137,19 @@ class MindustryEnv(gym.Env):
         )
 
     def step(
-        self, action: np.ndarray
+        self, action: np.ndarray | int
     ) -> Tuple[Dict[str, np.ndarray], float, bool, bool, Dict[str, Any]]:
         if self._client is None:
             raise RuntimeError("Must call reset() before step()")
 
-        action_type = int(action[0])
-        arg = int(action[1])
+        # Handle both old MultiDiscrete format [type, arg] and new simplified int format [0-9]
+        if isinstance(action, (int, np.integer)):
+            # Simplified discrete action (0-9) → decode to (action_type, arg)
+            action_type, arg = self._decode_simplified_action(int(action))
+        else:
+            # Old MultiDiscrete format
+            action_type = int(action[0])
+            arg = int(action[1])
 
         t0 = time.perf_counter()
         try:
@@ -326,6 +332,35 @@ class MindustryEnv(gym.Env):
             return 0 if dx > 0 else 2  # right or left
         else:
             return 1 if dy > 0 else 3  # up or down
+
+    def _decode_simplified_action(self, simplified_action: int) -> Tuple[int, int]:
+        """Decode simplified discrete action (0-9) to (action_type, arg) for old format.
+        
+        Maps 10 simplified actions to legacy MultiDiscrete format:
+        0: IDLE → (0, 0) = WAIT
+        1: BUILD_DUO → (2, 4) = BUILD_TURRET at center slot
+        2: BUILD_DRILL → (5, 4) = BUILD_DRILL at center slot
+        3: BUILD_STORAGE → (10, 4) = BUILD_PNEUMATIC_DRILL (closest to storage) at center
+        4: SPAWN_POLY → (1, 0) = MOVE north (placeholder, actual spawn handled by mod)
+        5: MOVE_ARMY → (1, 0) = MOVE north
+        6: UPGRADE_TURRET → (2, 4) = BUILD_TURRET (turrets upgrade via replacement)
+        7: REPAIR → (6, 4) = REPAIR at center slot
+        8: BUILD_POWER → (4, 4) = BUILD_POWER at center slot
+        9: FOCUS_DEFENSE → (3, 4) = BUILD_WALL at center slot
+        """
+        action_map = {
+            0: (0, 0),    # IDLE → WAIT
+            1: (2, 4),    # BUILD_DUO → BUILD_TURRET at slot 4 (center)
+            2: (5, 4),    # BUILD_DRILL → BUILD_DRILL at slot 4
+            3: (11, 4),   # BUILD_STORAGE → BUILD_PNEUMATIC_DRILL at slot 4
+            4: (1, 0),    # SPAWN_POLY → MOVE north
+            5: (1, 0),    # MOVE_ARMY → MOVE north
+            6: (2, 4),    # UPGRADE_TURRET → BUILD_TURRET
+            7: (6, 4),    # REPAIR → REPAIR at slot 4
+            8: (4, 4),    # BUILD_POWER → BUILD_POWER at slot 4
+            9: (3, 4),    # FOCUS_DEFENSE → BUILD_WALL at slot 4
+        }
+        return action_map.get(simplified_action, (0, 0))
 
     def _execute_action(self, action_type: int, arg: int) -> None:
         if action_type == ACTION_WAIT:
