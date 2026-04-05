@@ -562,3 +562,19 @@ def compute_action_mask(state: Dict[str, Any]) -> np.ndarray:
             mask[NUM_ACTION_TYPES + slot] = (target_x, target_y) in ally_demolishable
 
     return mask
+
+
+SIMPLIFIED_ACTIONS = {
+    0: "IDLE",
+    1: "BUILD_DUO",
+    2: "BUILD_DRILL",
+    3: "BUILD_STORAGE",
+    4: "SPAWN_POLY",
+    5: "MOVE_ARMY",
+    6: "UPGRADE_TURRET",
+    7: "REPAIR",
+    8: "BUILD_POWER",
+    9: "FOCUS_DEFENSE",
+}
+
+N_ACTIONS_SIMPLIFIED = len(SIMPLIFIED_ACTIONS)
