@@ -1,0 +1,48 @@
+phases:
+  phase_1_survival:
+    name: "Phase 1: Survival"
+    waves: [1, 2, 3]
+    episodes_per_wave: 10
+    total_episodes: 30
+    goal: "Learn to survive initial waves and maintain core health"
+    
+  phase_2_production:
+    name: "Phase 2: Production"
+    waves: [4, 5, 6, 7, 8, 9, 10]
+    episodes_per_wave: 15
+    total_episodes: 105
+    goal: "Optimize resource mining and logistics"
+    
+  phase_3_defense:
+    name: "Phase 3: Defense"
+    waves: [10, 11, 12, 13, 14, 15]
+    episodes_per_wave: 20
+    total_episodes: 120
+    goal: "Master defensive placements and power management"
+
+training:
+  learning_rate: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  entropy_coef: 0.01
+  value_coef: 0.5
+  max_grad_norm: 1.0
+  
+environment:
+  map_size: 16
+  max_steps_per_episode: 1000
+  
+model:
+  flat_dim: 15
+  spatial_h: 16
+  spatial_w: 16
+  hidden_dim: 128
+
+checkpointing:
+  save_interval: 50
+  checkpoint_dir: "./checkpoints"
+  
+logging:
+  log_interval: 10
+  log_dir: "./logs"
+  tensorboard_enabled: false
