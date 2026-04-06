@@ -1,0 +1,44 @@
+Categoria,Bloco,Insumos (Entrada / Custo),Produto / Função
+Mineração,Mechanical Drill,12 Copper,"Mineração básica (Copper, Lead, Coal)."
+,Pneumatic Drill,"12 Copper, 10 Graphite",Mineração de Titanium.
+,Laser Drill,"35 Cu, 20 Graph, 30 Sil",Mineração de Thorium (suporta água).
+Crafting,Graphite Press,2 Coal,1 Graphite
+,Multi-Press,3 Coal + 0.1 Water,2 Graphite
+,Silicon Smelter,1 Coal + 2 Sand,1 Silicon
+,Silicon Crucible,4 Coal + 8 Sand + Pyratite,8 Silicon
+,Kiln,1 Sand + 1 Lead,1 Metaglass
+,Plastanium Compressor,2 Titanium + 15 Oil,1 Plastanium
+,Phase Weaver,4 Thorium + 10 Sand,1 Phase Fabric
+,Surge Smelter,"3 Pb, 4 Cu, 2 Sil, 3 Ti",1 Surge Alloy
+,Cryofluid Mixer,1 Titanium + 12 Water,12 Cryofluid
+,Pyratite Mixer,2 Coal + 2 Sand + 1 Lead,1 Pyratite
+,Blast Mixer,1 Pyratite + 1 Spore Pod,1 Blast Compound
+,Spore Press,1 Spore Pod,18 Oil
+,Coal Centrifuge,20 Oil,1 Coal
+Sucata (Scrap),Pulverizer,1 Scrap,1 Sand
+,Melter,1 Scrap,12 Slag
+,Separator,5 Scrap + 4 Water,"Cu, Pb, Graph, Ti (Aleatório)"
+,Disassembler,4 Scrap + 4 Slag,"Sand, Graph, Ti, Thor (Aleatório)"
+,Slag Centrifuge,0.7 Slag + 140 Power,0.7 Scrap + 0.7 Graphite
+Logística,Conveyor,1 Copper,Transporte básico (4.2 itens/s).
+,Titanium Conveyor,"Cu, Pb, Ti",Transporte rápido (11 itens/s).
+,Plastanium Conveyor,"Pb, Graph, Plast",Transporte em massa (40 itens/s).
+,Junction / Router,Copper,Cruzamento e distribuição de itens.
+,Mass Driver,"Ti, Pb, Sil",Disparo de itens a longa distância.
+Líquidos,Mechanical Pump,"Cu, Metaglass",Bombeia líquidos (sem energia).
+,Rotary / Thermal Pump,Metaglass + Ti / Thor,Bombas de alta vazão (requer energia).
+,Conduit / Router,Metaglass,Transporte e distribuição de líquidos.
+Energia,Combustion Generator,Coal / Wood / Spore,Gera 60 energy/s.
+,Steam Generator,Coal + Water,Gera 330 energy/s.
+,Differential Gen.,Pyratite + Cryofluid,Gera 1080 energy/s.
+,Thorium Reactor,Thorium + Cryofluid,Gera 900 energy/s (Explosivo).
+,Impact Reactor,Blast Comp. + Cryofluid,Gera 7800 energy/s (Requer partida).
+Defesa,Duo / Salvo,Cu / Graph / Sil / Thor,Torres de tiro direto (Solo/Ar).
+,Scatter,Lead / Metaglass / Scrap,Defesa Antiaérea.
+,Scorch / Ripple,Pyratite / Blast Comp.,Curto alcance (Fogo) / Longo alcance (Art.).
+,Lancer / Arc,Energia,Laser perfurante / Choque em cadeia.
+,Foreshadow,Surge Alloy,Sniper de alvo único (Dano massivo).
+Suporte,Mender / Mend Proj.,Lead / Silicon,Cura construções próximas.
+,Force Projector,"Ti, Pb, Sil",Cria escudo de energia.
+,Container / Vault,"Ti, Thor",Aumenta armazenamento do Núcleo.
+,Unloader,"Cu, Pb",Retira itens de depósitos/núcleo.

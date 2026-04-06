@@ -31,8 +31,9 @@ class MindustryEnv:
         self.episode_reward = 0.0
         self.last_resources = 0.0
         self.last_power = 0.0
-        self.last_health = 100.0
+        self.last_health = 1.0
 
+        self.state_reader._reset_simulation()
         game_state = self.state_reader.read_state()
         obs = self._package_observation(game_state)
         return obs
